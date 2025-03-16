@@ -1,0 +1,21 @@
+DriverId,FullName,TeamName,GridPosition,Position,FinishTime,FinishStatus,CompletedLaps,DNF
+VER,Max Verstappen,Red Bull Racing,3.0,1,4730.428929485705,Finished,58,False
+HAM,Lewis Hamilton,Ferrari,8.0,2,4750.826123502236,Finished,58,False
+PIA,Oscar Piastri,McLaren,2.0,3,4755.560013775263,Finished,58,False
+LEC,Charles Leclerc,Ferrari,7.0,4,4792.651864077146,Finished,58,False
+TSU,Yuki Tsunoda,Racing Bulls,5.0,5,4833.895841191882,Finished,58,False
+SAI,Carlos Sainz,Williams,10.0,6,4837.14470129042,Finished,58,False
+RUS,George Russell,Mercedes,4.0,7,4865.28654844535,Finished,58,False
+ALO,Fernando Alonso,Aston Martin,12.0,8,4894.480371977949,Finished,58,False
+NOR,Lando Norris,McLaren,1.0,9,4901.883806148045,Finished,58,False
+STR,Lance Stroll,Aston Martin,13.0,10,4929.620107829612,Finished,58,False
+OCO,Esteban Ocon,Haas F1 Team,19.0,11,4962.028654584764,Finished,58,False
+HAD,Isack Hadjar,Racing Bulls,11.0,12,4995.521293106955,Finished,58,False
+DOO,Jack Doohan,Alpine,14.0,13,5054.667874103392,Finished,58,False
+BOR,Gabriel Bortoleto,Kick Sauber,15.0,14,5094.251009710053,Finished,58,False
+ANT,Andrea Kimi Antonelli,Mercedes,16.0,15,5115.4166540051465,Finished,58,False
+HUL,Nico Hulkenberg,Kick Sauber,17.0,16,5150.371250928492,Finished,58,False
+LAW,Liam Lawson,Red Bull Racing,18.0,17,5177.796564483779,Finished,58,False
+ALB,Alexander Albon,Williams,6.0,18,,DNF (Lap 5),5,True
+GAS,Pierre Gasly,Alpine,9.0,19,,DNF (Lap 45),45,True
+BEA,Oliver Bearman,Haas F1 Team,20.0,20,,DNF (Lap 42),42,True
