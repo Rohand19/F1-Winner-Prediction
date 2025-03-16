@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  f1predictor:
+    build: .
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./results:/app/results
+    environment:
+      - PYTHONPATH=/app
+    command: --model-type gradient_boosting --visualize 

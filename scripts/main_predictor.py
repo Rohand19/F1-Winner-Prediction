@@ -344,23 +344,28 @@ def main():
                 
                 # 1. Starting grid vs. finishing positions
                 plt.figure(figsize=(12, 8))
-                grid = race_results[['FullName', 'StartPosition', 'FinishPosition']].copy()
-                grid = grid[grid['FinishPosition'].notna()]  # Filter out DNFs
+                grid = race_results[['FullName', 'GridPosition', 'Position']].copy()
+                grid = grid[grid['Position'] != 'DNF']  # Filter out DNFs
+                grid['Position'] = grid['Position'].astype(float)
+                grid['GridPosition'] = grid['GridPosition'].astype(float)
                 
-                # Reshape for heatmap
-                grid_vs_finish = pd.DataFrame(
-                    0, 
-                    index=range(1, grid['StartPosition'].max() + 1),
-                    columns=range(1, grid['FinishPosition'].max() + 1)
-                )
+                # Create empty heatmap matrix
+                max_pos = int(max(grid['GridPosition'].max(), grid['Position'].max()))
+                heatmap = np.zeros((max_pos, max_pos))
                 
+                # Fill heatmap matrix
                 for _, row in grid.iterrows():
-                    start = int(row['StartPosition'])
-                    finish = int(row['FinishPosition'])
-                    grid_vs_finish.loc[start, finish] += 1
+                    start = int(row['GridPosition']) - 1
+                    finish = int(row['Position']) - 1
+                    heatmap[finish, start] += 1
                 
-                # Plot heatmap
-                sns.heatmap(grid_vs_finish, annot=True, cmap='YlGnBu', fmt='d', cbar_kws={'label': 'Number of Drivers'})
+                # Create heatmap visualization
+                sns.heatmap(heatmap, 
+                            annot=True, 
+                            fmt='g',
+                            cmap='YlOrRd',
+                            xticklabels=range(1, max_pos + 1),
+                            yticklabels=range(1, max_pos + 1))
                 plt.title('Starting Grid vs. Finishing Positions', fontsize=16)
                 plt.xlabel('Finishing Position', fontsize=12)
                 plt.ylabel('Grid Position', fontsize=12)
