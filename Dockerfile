@@ -31,13 +31,9 @@ WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy application code
+# Copy source code and scripts
 COPY src/ ./src/
 COPY scripts/ ./scripts/
-COPY data/ ./data/
-COPY models/ ./models/
-COPY results/ ./results/
-COPY cache/ ./cache/
 
 # Create necessary directories with proper permissions
 RUN mkdir -p /app/data/{raw,processed,external} \
@@ -52,6 +48,7 @@ USER nobody
 # Set environment variables
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
+ENV MPLCONFIGDIR=/tmp/matplotlib
 
 # Default command
 ENTRYPOINT ["python", "-m", "scripts.main_predictor"]
