@@ -110,7 +110,7 @@ y = model_data["MedianLapTime (s)"].values  # Target values
 # Split data for training and validation
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# Train a gradient boosting REGRESSOR (not classifier)
+# Train a gradient boosting REGRESSOR
 model = GradientBoostingRegressor(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42)
 model.fit(X_train, y_train)
 
