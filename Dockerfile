@@ -1,29 +1,58 @@
-FROM python:3.11-slim
-
-# Set environment variables
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=off \
-    PIP_DISABLE_PIP_VERSION_CHECK=on \
-    PIP_DEFAULT_TIMEOUT=100
+# Stage 1: Build environment
+FROM python:3.11-slim as builder
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        build-essential \
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy project files
+# Copy the entire project for installation
 COPY . .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -e ".[dev]"
+# Create and activate virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
-# Create necessary directories
-RUN mkdir -p data/cache data/raw models results
+# Upgrade pip and install dependencies
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -e .[dev]
 
-# Set entrypoint
-ENTRYPOINT ["f1predict"] 
+# Stage 2: Runtime environment
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy application code
+COPY src/ ./src/
+COPY scripts/ ./scripts/
+COPY data/ ./data/
+COPY models/ ./models/
+COPY results/ ./results/
+COPY cache/ ./cache/
+
+# Create necessary directories with proper permissions
+RUN mkdir -p /app/data/{raw,processed,external} \
+    /app/models/trained \
+    /app/results/{predictions,plots,logs} \
+    /app/cache \
+    && chown -R nobody:nogroup /app
+
+# Switch to non-root user
+USER nobody
+
+# Set environment variables
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+# Default command
+ENTRYPOINT ["python", "-m", "scripts.main_predictor"]
+CMD ["--help"] 

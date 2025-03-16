@@ -1,12 +1,57 @@
 version: '3.8'
 
 services:
+  # Production service
   f1predictor:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: f1predictor:latest
     volumes:
       - ./data:/app/data
       - ./models:/app/models
       - ./results:/app/results
+      - ./cache:/app/cache
     environment:
       - PYTHONPATH=/app
-    command: --model-type gradient_boosting --visualize 
+      - PYTHONUNBUFFERED=1
+    command: ["--year", "2024", "--race", "1", "--model-type", "xgboost", "--visualize"]
+
+  # Development service
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    image: f1predictor:dev
+    volumes:
+      - .:/app
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
+    command: ["python", "-m", "pytest", "tests/", "-v", "--cov=f1predictor"]
+
+  # Jupyter notebook service
+  notebook:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    image: f1predictor:notebook
+    volumes:
+      - .:/app
+      - ./notebooks:/app/notebooks
+    ports:
+      - "8888:8888"
+    environment:
+      - PYTHONPATH=/app
+      - JUPYTER_TOKEN=f1predictor
+    command: ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root"]
+
+volumes:
+  data:
+  models:
+  results:
+  cache: 
