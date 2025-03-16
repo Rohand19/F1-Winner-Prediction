@@ -35,7 +35,7 @@ COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy source code and scripts
-COPY --from=builder /app/src ./src
+COPY --from=builder /app/src/f1predictor ./src/f1predictor
 COPY --from=builder /app/scripts ./scripts
 
 # Create necessary directories with proper permissions
@@ -49,10 +49,10 @@ RUN mkdir -p /app/data/{raw,processed,external} \
 USER nobody
 
 # Set environment variables
-ENV PYTHONPATH=/app/src
+ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 ENV MPLCONFIGDIR=/tmp/matplotlib
 
-# Default command
-ENTRYPOINT ["python", "-m", "scripts.main_predictor"]
-CMD ["--help"] 
+# For debugging purposes
+ENTRYPOINT ["sh", "-c"]
+CMD ["python -c 'import sys; print(sys.path); from src.f1predictor.models.race_predictor import RacePredictor' || (python -c 'import sys; print(sys.path)' && ls -R /app && exit 1)"] 
