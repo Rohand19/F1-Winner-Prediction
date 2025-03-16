@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
-import os
 import sys
+import os
+
+# Add the parent directory to the Python path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import logging
 import pandas as pd
 import numpy as np
@@ -10,14 +14,14 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 # Import custom modules
-from data_processor import F1DataProcessor
-from feature_engineering import F1FeatureEngineer
-from race_predictor import RacePredictor, print_race_results
-from model_trainer import F1ModelTrainer
+from src.data.data_processor import F1DataProcessor
+from src.features.feature_engineering import F1FeatureEngineer
+from src.models.race_predictor import RacePredictor, print_race_results
+from src.models.model_trainer import F1ModelTrainer
 
 # Setup logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler(f"f1_predictor_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"),
@@ -271,16 +275,26 @@ def main():
                 # Make predictions
                 positions = model_trainer.predict_with_model(best_model, race_features)
                 
-                # Update the projected positions
-                for i, (idx, _) in enumerate(race_features.iterrows()):
-                    race_features.loc[idx, "ProjectedPosition"] = positions[i]
-                
-                # Get final race prediction
-                race_results = race_predictor.predict_and_visualize(
-                    race_features,
-                    title=f"{event_name} {year} Prediction (Model: {best_model_type})",
-                    output_file=os.path.join(args.output_dir, f"prediction_{year}_round{race_round}.png")
-                )
+                if positions is None:
+                    logger.error("Failed to make predictions with best model")
+                    # Fallback to direct prediction
+                    logger.info("Falling back to direct prediction without ML model")
+                    race_results = race_predictor.predict_and_visualize(
+                        race_features,
+                        title=f"{event_name} {year} Prediction",
+                        output_file=os.path.join(args.output_dir, f"prediction_{year}_round{race_round}.png")
+                    )
+                else:
+                    # Update the projected positions
+                    for i, (idx, _) in enumerate(race_features.iterrows()):
+                        race_features.loc[idx, "ProjectedPosition"] = positions[i]
+                    
+                    # Get final race prediction
+                    race_results = race_predictor.predict_and_visualize(
+                        race_features,
+                        title=f"{event_name} {year} Prediction (Model: {best_model_type})",
+                        output_file=os.path.join(args.output_dir, f"prediction_{year}_round{race_round}.png")
+                    )
         else:
             # Use selected model type
             if args.model_type != 'xgboost':

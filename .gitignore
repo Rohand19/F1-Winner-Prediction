@@ -1,7 +1,16 @@
 # Project-specific
 cache/
+models/
+results/
+data/cache/
+data/raw/*.csv
 *.png
 predicted_race_results.png
+f1_prediction.log
+f1_predictor_*.log
+
+# FastF1 cache
+*.ff1pkl
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -25,9 +34,11 @@ parts/
 sdist/
 var/
 wheels/
+share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 
 # PyInstaller
 *.manifest
@@ -47,8 +58,10 @@ htmlcov/
 nosetests.xml
 coverage.xml
 *.cover
+*.py,cover
 .hypothesis/
 .pytest_cache/
+cover/
 
 # Jupyter Notebook
 .ipynb_checkpoints
@@ -56,6 +69,9 @@ coverage.xml
 # IPython
 profile_default/
 ipython_config.py
+
+# pyenv
+.python-version
 
 # Environments
 .env
@@ -81,11 +97,25 @@ out/
 # VS Code
 .vscode/
 *.code-workspace
+.history/
 
 # macOS
 .DS_Store
+.AppleDouble
+.LSOverride
+._*
 
 # Windows
 Thumbs.db
 ehthumbs.db
-Desktop.ini 
+Desktop.ini
+$RECYCLE.BIN/
+
+# Temporary files
+*.swp
+*.swo
+*~
+
+# Local development settings
+local_settings.py
+db.sqlite3 

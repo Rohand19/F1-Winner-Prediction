@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
-import os
 import sys
+import os
+
+# Add the parent directory to the Python path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import logging
 import pandas as pd
 from datetime import datetime
 
 # Import custom modules
-from data_processor import F1DataProcessor
-from feature_engineering import F1FeatureEngineer
-from race_predictor import RacePredictor
+from src.data.data_processor import F1DataProcessor
+from src.features.feature_engineering import F1FeatureEngineer
+from src.models.race_predictor import RacePredictor
 
 # Setup logging
 logging.basicConfig(

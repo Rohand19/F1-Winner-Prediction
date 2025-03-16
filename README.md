@@ -19,42 +19,58 @@ The system predicts:
 - Potential DNFs (Did Not Finish)
 - Championship points earned
 
-## Components
+## Project Structure
 
-The prediction system consists of the following modules:
+```
+f1-predictor/
+├── src/                    # Source code
+│   ├── data/              # Data processing and handling
+│   │   ├── __init__.py
+│   │   └── data_processor.py
+│   ├── features/          # Feature engineering
+│   │   ├── __init__.py
+│   │   └── feature_engineering.py
+│   ├── models/            # Model training and prediction
+│   │   ├── __init__.py
+│   │   ├── model_trainer.py
+│   │   └── race_predictor.py
+│   └── utils/             # Utility functions
+│       └── __init__.py
+├── scripts/               # Entry point scripts
+│   ├── main_predictor.py  # Main script for race predictions
+│   ├── run_prediction.py  # Alternative prediction script
+│   ├── prediction.py      # Legacy prediction script
+│   └── qual_data.py      # Qualifying data processing
+├── tests/                 # Test files
+│   └── __init__.py
+├── data/                  # Data files
+│   ├── cache/            # FastF1 cache
+│   └── raw/              # Raw data files
+├── models/               # Saved models
+├── results/              # Prediction results
+├── requirements.txt      # Project dependencies
+└── README.md            # Project documentation
+```
 
-1. **Data Processor** (`data_processor.py`): Collects and processes F1 data from the FastF1 API, including qualifying results, historical race data, and track information.
+## Usage
 
-2. **Feature Engineering** (`feature_engineering.py`): Extracts meaningful features from the raw data, including:
-   - Team performance metrics
-   - Driver form and historical performance
-   - Track-specific characteristics
-   - Qualifying performance relative to teammates
-   - Race pace estimation
+To run the F1 race prediction system, use the main script:
 
-3. **Model Trainer** (`model_trainer.py`): Trains and evaluates machine learning models for race prediction:
-   - Supports multiple model types (XGBoost, Gradient Boosting, Random Forest, etc.)
-   - Includes hyperparameter tuning capabilities
-   - Provides model evaluation metrics
-   - Generates feature importance visualizations
+```bash
+python scripts/main_predictor.py --model_type gradient_boosting --qualifying_data data/raw/qualifying_times.csv
+```
 
-4. **Race Predictor** (`race_predictor.py`): Simulates the race outcome based on engineered features:
-   - Predicts finishing positions
-   - Calculates race times with lap-by-lap simulation
-   - Estimates potential DNFs based on reliability data
-   - Calculates championship points
-   - Creates visualizations of race results
+For more options and parameters:
 
-5. **Main Predictor** (`main_predictor.py`): Orchestrates the end-to-end prediction process:
-   - Handles command-line arguments
-   - Manages the prediction pipeline
-   - Generates visualizations and result outputs
+```bash
+python scripts/main_predictor.py --help
+```
 
 ## Installation
 
 1. Clone this repository:
 ```
-git clone https://github.com/yourusername/f1-race-prediction.git
+git clone https://github.com/Rohand19/f1-race-prediction.git
 cd f1-race-prediction
 ```
 
@@ -72,82 +88,6 @@ Required dependencies include:
 - scikit-learn
 - xgboost
 - argparse
-
-## Usage
-
-### Basic Usage
-
-Predict the next upcoming race:
-
-```
-python main_predictor.py
-```
-
-Predict a specific race:
-
-```
-python main_predictor.py --year 2023 --race 3
-```
-
-Predict by event name:
-
-```
-python main_predictor.py --event "Australian"
-```
-
-### Advanced Options
-
-Use different machine learning models:
-
-```
-python main_predictor.py --model-type random_forest
-```
-
-Compare multiple model types:
-
-```
-python main_predictor.py --compare-models
-```
-
-Tune model hyperparameters (slower but potentially more accurate):
-
-```
-python main_predictor.py --tune-hyperparams
-```
-
-Include additional visualizations:
-
-```
-python main_predictor.py --visualize
-```
-
-Use more historical race data for better predictions:
-
-```
-python main_predictor.py --historical-races 10
-```
-
-Include practice session data for predictions:
-
-```
-python main_predictor.py --include-practice
-```
-
-Force reload of data (ignore cache):
-
-```
-python main_predictor.py --reload-data
-```
-
-### Output
-
-The system generates the following outputs in the `results` directory (or custom directory specified with `--output-dir`):
-
-1. Race result predictions in CSV format
-2. Visualizations of predicted race outcomes
-3. Feature importance plots (when using machine learning models)
-4. Team performance predictions
-5. Starting grid vs. finishing position analysis
 
 ## How It Works
 
@@ -182,10 +122,6 @@ The system handles new drivers (those without historical data) by:
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Acknowledgments
 
