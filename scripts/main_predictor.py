@@ -16,8 +16,8 @@ import seaborn as sns
 # Import custom modules
 from src.data.data_processor import F1DataProcessor
 from src.features.feature_engineering import F1FeatureEngineer
-from src.models.race_predictor import RacePredictor, print_race_results
-from src.models.model_trainer import F1ModelTrainer
+from src.f1predictor.models.race_predictor import RacePredictor, print_race_results
+from src.f1predictor.models.model_trainer import F1ModelTrainer
 
 # Setup logging
 logging.basicConfig(

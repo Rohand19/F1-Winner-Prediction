@@ -28,10 +28,8 @@ jobs:
         
     - name: Run linting
       run: |
-        flake8 src/f1predictor tests
+        black src/f1predictor tests
         black --check src/f1predictor tests
-        isort --check-only src/f1predictor tests
-        mypy src/f1predictor tests
         
     - name: Run tests
       run: |

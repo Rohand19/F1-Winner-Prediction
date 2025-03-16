@@ -41,15 +41,24 @@ class F1FeatureEngineer:
             
             for team_name, results in team_results:
                 # Calculate average finish position
-                avg_position = results[results["Status"] == "Finished"]["Position"].astype(float).mean()
+                if "Status" in results.columns:
+                    finished_races = results[results["Status"] == "Finished"]
+                else:
+                    # Fallback to using DNF column
+                    finished_races = results[~results["DNF"]]
+                
+                avg_position = finished_races["Position"].astype(float).mean()
                 
                 # Calculate reliability (percentage of finishes)
                 total_races = len(results)
-                finished_races = len(results[results["Status"] == "Finished"])
-                reliability = finished_races / total_races if total_races > 0 else 0
+                if "Status" in results.columns:
+                    finished_count = len(results[results["Status"] == "Finished"])
+                else:
+                    finished_count = len(results[~results["DNF"]])
+                reliability = finished_count / total_races if total_races > 0 else 0
                 
                 # Calculate average pace (median lap time)
-                avg_pace = results["MedianLapTime"].dropna().mean()
+                avg_pace = results["MedianLapTime"].dropna().mean() if "MedianLapTime" in results.columns else np.nan
                 
                 # Get current season points
                 team_points = 0

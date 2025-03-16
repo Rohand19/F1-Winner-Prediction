@@ -6,127 +6,187 @@ This project implements a comprehensive Formula 1 race prediction system that us
 
 The F1 Race Prediction System analyzes various factors to predict race outcomes:
 
-- Real qualifying data to establish starting grid positions
-- Historical race pace data from the FastF1 API
-- Driver and team performance metrics
+- Real qualifying data from FastF1 API
+- Historical race data and performance metrics
+- Driver and team performance analysis
 - Track-specific characteristics
 - Race strategy simulations
-- Machine learning models to improve prediction accuracy
+- Machine learning models with multiple algorithm options
 
 The system predicts:
 - Final race positions for each driver
 - Finish times and gaps between drivers
 - Potential DNFs (Did Not Finish)
 - Championship points earned
+- Race pace and performance metrics
+
+## Key Features
+
+- **Multiple ML Models**: Support for XGBoost, Gradient Boosting, Random Forest, Ridge, Lasso, and SVR
+- **Comprehensive Feature Engineering**:
+  - Driver performance metrics
+  - Team strength analysis
+  - Track-specific characteristics
+  - Historical performance trends
+  - Qualifying performance analysis
+- **Rookie Driver Handling**: Special handling for drivers without historical data
+- **Visualization Tools**: Generate plots for:
+  - Grid vs. Finish position
+  - Team performance analysis
+  - Race pace predictions
+  - DNF probability analysis
+- **Data Caching**: Efficient data management with FastF1 cache system
+- **Flexible Predictions**: Support for:
+  - Next upcoming race
+  - Specific race by round number
+  - Specific race by event name
+  - Historical race predictions
 
 ## Project Structure
 
 ```
 f1-predictor/
 ├── src/                    # Source code
-│   ├── data/              # Data processing and handling
-│   │   ├── __init__.py
-│   │   └── data_processor.py
-│   ├── features/          # Feature engineering
-│   │   ├── __init__.py
-│   │   └── feature_engineering.py
-│   ├── models/            # Model training and prediction
-│   │   ├── __init__.py
-│   │   ├── model_trainer.py
-│   │   └── race_predictor.py
-│   └── utils/             # Utility functions
-│       └── __init__.py
+│   ├── data/              # Data processing and FastF1 integration
+│   ├── features/          # Feature engineering and analysis
+│   ├── models/            # ML models and predictions
+│   ├── utils/             # Utility functions
+│   └── f1predictor/       # Core prediction package
 ├── scripts/               # Entry point scripts
-│   ├── main_predictor.py  # Main script for race predictions
-│   ├── run_prediction.py  # Alternative prediction script
-│   ├── prediction.py      # Legacy prediction script
-│   └── qual_data.py      # Qualifying data processing
-├── tests/                 # Test files
-│   └── __init__.py
-├── data/                  # Data files
-│   ├── cache/            # FastF1 cache
-│   └── raw/              # Raw data files
-├── models/               # Saved models
-├── results/              # Prediction results
-├── requirements.txt      # Project dependencies
-└── README.md            # Project documentation
-```
-
-## Usage
-
-To run the F1 race prediction system, use the main script:
-
-```bash
-python scripts/main_predictor.py --model_type gradient_boosting --qualifying_data data/raw/qualifying_times.csv
-```
-
-For more options and parameters:
-
-```bash
-python scripts/main_predictor.py --help
+├── tests/                 # Test suite
+├── data/                  # Data storage
+├── models/               # Saved model states
+├── results/              # Prediction outputs
+├── cache/                # FastF1 cache
+└── docs/                 # Documentation
 ```
 
 ## Installation
 
 1. Clone this repository:
-```
+```bash
 git clone https://github.com/Rohand19/f1-race-prediction.git
 cd f1-race-prediction
 ```
 
-2. Install required dependencies:
-```
-pip install -r requirements.txt
+2. Create and activate a virtual environment (recommended):
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
-Required dependencies include:
-- pandas
-- numpy
-- fastf1
-- matplotlib
-- seaborn
-- scikit-learn
-- xgboost
-- argparse
+3. Install the package in development mode:
+```bash
+pip install -e .
+```
+
+## Usage
+
+### Basic Race Prediction
+
+To predict the next upcoming race:
+```bash
+python scripts/main_predictor.py
+```
+
+For a specific race:
+```bash
+python scripts/main_predictor.py --year 2024 --race 1
+```
+
+### Advanced Options
+
+- Choose ML model:
+```bash
+python scripts/main_predictor.py --model-type xgboost
+```
+
+- Include practice session data:
+```bash
+python scripts/main_predictor.py --include-practice
+```
+
+- Generate visualizations:
+```bash
+python scripts/main_predictor.py --visualize
+```
+
+- Compare multiple models:
+```bash
+python scripts/main_predictor.py --compare-models
+```
+
+- Tune model hyperparameters:
+```bash
+python scripts/main_predictor.py --tune-hyperparams
+```
+
+### Configuration
+
+The system can be configured through command-line arguments:
+
+- `--year`: Race year (default: current year)
+- `--race`: Race number
+- `--event`: Event name (alternative to race number)
+- `--historical-races`: Number of historical races to use (default: 5)
+- `--model-type`: ML model to use
+- `--output-dir`: Directory for results
+- `--reload-data`: Force reload of cached data
 
 ## How It Works
 
-1. **Data Collection**: The system collects qualifying data for the race to be predicted, along with historical race data for feature engineering.
+1. **Data Collection**:
+   - Fetches qualifying data from FastF1 API
+   - Collects historical race data
+   - Gathers track information
 
-2. **Feature Engineering**: Raw data is transformed into meaningful features that capture driver skill, car performance, track characteristics, etc.
+2. **Feature Engineering**:
+   - Processes qualifying performance
+   - Analyzes historical race pace
+   - Calculates team performance metrics
+   - Evaluates track characteristics
+   - Handles new drivers and special cases
 
-3. **Model Training**: Machine learning models are trained using historical data to predict race outcomes based on engineered features.
+3. **Prediction Pipeline**:
+   - Trains selected ML model
+   - Simulates race conditions
+   - Calculates finish times and gaps
+   - Predicts DNF probabilities
+   - Generates detailed race results
 
-4. **Race Simulation**: A detailed race simulation takes place, accounting for factors like:
-   - Qualifying performance
-   - Historical race pace
-   - Tire degradation
-   - Starting position advantage/disadvantage
-   - Reliability factors for DNF prediction
+4. **Output Generation**:
+   - Formatted race results
+   - Performance visualizations
+   - CSV exports for analysis
+   - Detailed logging
 
-5. **Result Presentation**: The system generates formatted outputs and visualizations of the predicted race outcomes.
+## Limitations and Considerations
 
-## Handling New Drivers
-
-The system handles new drivers (those without historical data) by:
-1. Using team performance as a baseline
-2. Analyzing qualifying performance relative to teammates
-3. Incorporating rookie factors into predictions
-
-## Limitations
-
-- Prediction accuracy depends on the quality and availability of historical data
-- Cannot account for completely unexpected events (weather changes, red flags, accidents)
-- New drivers with no historical data have higher prediction uncertainty
+- Prediction accuracy depends on data quality and availability
+- Cannot account for unexpected events (weather changes, accidents)
+- New drivers and tracks have higher uncertainty
+- Some features require recent historical data
+- Practice session data may not always be available
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! Please:
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Run the test suite
+5. Submit a pull request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Acknowledgments
 
-- The [FastF1](https://github.com/theOehrly/Fast-F1) project for providing access to F1 data
+- [FastF1](https://github.com/theOehrly/Fast-F1) for F1 data access
 - Formula 1 for the racing data
+- The F1 community for inspiration and feedback
 
 ---
 
