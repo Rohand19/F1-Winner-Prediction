@@ -9,6 +9,7 @@ predicted_race_results.png
 f1_prediction.log
 f1_predictor_*.log
 test_models/
+.github/
 
 # FastF1 cache
 *.ff1pkl
