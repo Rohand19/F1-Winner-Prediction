@@ -44,59 +44,72 @@ def load_race_data(year, gp_round, session_type):
         print(f"Error loading session data: {e}")
         return None
 
-# Load 2024 Australian GP race data (round 3)
-laps_2024 = load_race_data(2024, 3, "R")
+# Load historical Australian GP race data (round 3)
+race_year = 2024
+race_round = 3
+race_name = "Australian Grand Prix"
+laps_data = load_race_data(race_year, race_round, "R")
 
-if laps_2024 is None:
+if laps_data is None:
     print("Failed to load race data. Exiting.")
     exit(1)
 
 # Process lap data - use median lap time for each driver to get representative race pace
-driver_race_pace = laps_2024.groupby("Driver")["LapTime (s)"].median().reset_index()
+driver_race_pace = laps_data.groupby("Driver")["LapTime (s)"].median().reset_index()
 driver_race_pace.rename(columns={"LapTime (s)": "MedianLapTime (s)"}, inplace=True)
 print(f"Processed race pace data for {len(driver_race_pace)} drivers")
 
-# Fictional qualifying data for 2025 Australian GP
-qualifying_2025 = pd.DataFrame(
-{
-    "Driver": 
-        ["Lando Norris", "Oscar Piastri", "Max Verstappen", "George Russell", 
-         "Yuki Tsunoda", "Alex Albon", "Charles Leclerc", "Lewis Hamilton", 
-         "Pierre Gasly", "Carlos Sainz", "Isack Hadjar", "Fernando Alonso", 
-         "Lance Stroll", "Jack Doohan", "Gabriel Bortoleto", "Kimi Antonelli", 
-         "Nico Hulkenberg", "Liam Lawson", "Esteban Ocon", "Ollie Bearman"],
-     
-    "QualifyingTime (s)": 
-        [75.096, 75.180, 75.481, 75.546, 75.670, 75.750, 75.675, 75.473, 
-         75.900, 76.000, 76.100, 76.200, 76.250, 76.300, 76.350, 76.400, 
-         76.450, 76.500, 76.550, 76.600]  # Fixed None value
-})
+# Load qualifying data from CSV file - this is required
+qualifying_times_csv = "qualifying_times.csv"
+print(f"Loading qualifying data from {qualifying_times_csv}")
 
-# Map full driver names to driver codes
-driver_mapping = {
-    "Lando Norris": "NOR", "Oscar Piastri": "PIA", "Max Verstappen": "VER", 
-    "George Russell": "RUS", "Yuki Tsunoda": "TSU", "Alex Albon": "ALB", 
-    "Charles Leclerc": "LEC", "Lewis Hamilton": "HAM", "Pierre Gasly": "GAS", 
-    "Carlos Sainz": "SAI", "Isack Hadjar": "HAD", "Fernando Alonso": "ALO", 
-    "Lance Stroll": "STR", "Jack Doohan": "DOO", "Gabriel Bortoleto": "BOR", 
-    "Kimi Antonelli": "ANT", "Nico Hulkenberg": "HUL", "Liam Lawson": "LAW", 
-    "Esteban Ocon": "OCO", "Ollie Bearman": "BEA"
-}
+try:
+    if not os.path.exists(qualifying_times_csv):
+        raise FileNotFoundError(f"Required file {qualifying_times_csv} not found. Please run qual_data.py first to generate qualifying data.")
+    
+    qualifying_data = pd.read_csv(qualifying_times_csv)
+    
+    # Rename columns to match expected format
+    qualifying_data = qualifying_data.rename(columns={
+        "FullName": "Driver",
+        "DriverCode": "DriverCode"
+    })
+    
+    # Check if data was loaded successfully
+    if qualifying_data.empty:
+        raise ValueError("Qualifying data is empty")
+        
+    print(f"Successfully loaded qualifying data for {len(qualifying_data)} drivers")
+    print(qualifying_data.head())
+    
+except Exception as e:
+    print(f"Error loading qualifying data: {e}")
+    print("Please run qual_data.py first to generate the qualifying_times.csv file")
+    exit(1)
 
-# Add driver codes to the qualifying dataframe
-qualifying_2025["DriverCode"] = qualifying_2025["Driver"].map(driver_mapping)
+# Drop rows with NaN qualifying times
+qualifying_data_valid = qualifying_data.dropna(subset=["QualifyingTime (s)"])
+print(f"Number of drivers with valid qualifying times: {len(qualifying_data_valid)}")
 
-# Add some fictional historical data for drivers without 2024 data
-fictional_data = pd.DataFrame({
-    "Driver": ["HAD", "DOO", "BOR", "ANT", "LAW", "BEA"],
-    "MedianLapTime (s)": [81.2, 81.3, 81.5, 81.4, 81.6, 81.7]
-})
+if len(qualifying_data_valid) == 0:
+    print("No valid qualifying times found. Exiting.")
+    exit(1)
 
-# Combine real and fictional data
-full_driver_data = pd.concat([driver_race_pace, fictional_data])
+# List of available driver codes from historical data
+available_drivers = driver_race_pace["Driver"].tolist()
+print(f"Drivers with historical race data: {available_drivers}")
+
+# Filter qualifying data to only include drivers with historical data
+qualifying_filtered = qualifying_data_valid[qualifying_data_valid["DriverCode"].isin(available_drivers)]
+print(f"\nFiltered out {len(qualifying_data_valid) - len(qualifying_filtered)} drivers without historical data")
+print(f"Remaining drivers for prediction: {len(qualifying_filtered)}")
+
+if len(qualifying_filtered) == 0:
+    print("No drivers with both qualifying times and historical data. Exiting.")
+    exit(1)
 
 # Merge qualifying data with race pace data
-model_data = qualifying_2025.merge(full_driver_data, left_on="DriverCode", right_on="Driver", suffixes=('', '_RacePace'))
+model_data = qualifying_filtered.merge(driver_race_pace, left_on="DriverCode", right_on="Driver", suffixes=('', '_RacePace'))
 
 # Verify data is properly merged
 print(f"Model data shape: {model_data.shape}")
@@ -110,7 +123,7 @@ y = model_data["MedianLapTime (s)"].values  # Target values
 # Split data for training and validation
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# Train a gradient boosting REGRESSOR
+# Train a gradient boosting regressor
 model = GradientBoostingRegressor(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42)
 model.fit(X_train, y_train)
 
@@ -120,19 +133,19 @@ test_mae = mean_absolute_error(y_test, y_pred_test)
 print(f"\nModel Error (MAE) on test set: {test_mae:.2f} seconds\n")
 
 # Predict race pace for all drivers based on qualifying times
-qualifying_2025_X = qualifying_2025[["QualifyingTime (s)"]].values  # 2D array
-predicted_lap_times = model.predict(qualifying_2025_X)
+qualifying_filtered_X = qualifying_filtered[["QualifyingTime (s)"]].values  # 2D array
+predicted_lap_times = model.predict(qualifying_filtered_X)
 
-# Calculate total race time (assuming 58 laps for Australian GP)
+# Calculate total race time (number of laps for the Australian GP)
 NUM_LAPS = 58
-qualifying_2025["PredictedLapTime (s)"] = predicted_lap_times
-qualifying_2025["PredictedRaceTime (s)"] = qualifying_2025["PredictedLapTime (s)"] * NUM_LAPS
+qualifying_filtered["PredictedLapTime (s)"] = predicted_lap_times
+qualifying_filtered["PredictedRaceTime (s)"] = qualifying_filtered["PredictedLapTime (s)"] * NUM_LAPS
 
 # Sort by predicted race time to get final standings
-final_standings = qualifying_2025.sort_values(by="PredictedRaceTime (s)")
+final_standings = qualifying_filtered.sort_values(by="PredictedRaceTime (s)")
 
 # Display predicted race winner and standings
-print("\n=== Predicted 2025 Australian GP Race Results ===\n")
+print(f"\n=== Predicted {race_name} Race Results (Drivers with Historical Data) ===\n")
 print(final_standings[["Driver", "QualifyingTime (s)", "PredictedLapTime (s)", "PredictedRaceTime (s)"]].head(20))
 
 # Calculate time deltas from winner
@@ -146,10 +159,24 @@ for i, (_, driver) in enumerate(final_standings.iterrows(), 1):
     gap_str = f"+{gap:.3f}s" if i > 1 else "WINNER"
     print(f"{i}. {driver['Driver']} ({driver['DriverCode']}) - {gap_str}")
 
+# Print excluded drivers due to lack of historical data
+excluded_due_to_history = qualifying_data_valid[~qualifying_data_valid["DriverCode"].isin(available_drivers)]
+if not excluded_due_to_history.empty:
+    print("\n=== Excluded Drivers (No Historical Data Available) ===")
+    for _, driver in excluded_due_to_history.iterrows():
+        print(f"- {driver['Driver']} ({driver['DriverCode']})")
+
+# Print drivers excluded due to missing qualifying time
+excluded_due_to_qualifying = qualifying_data[pd.isna(qualifying_data["QualifyingTime (s)"])]
+if not excluded_due_to_qualifying.empty:
+    print("\n=== Excluded Drivers (No Valid Qualifying Time) ===")
+    for _, driver in excluded_due_to_qualifying.iterrows():
+        print(f"- {driver['Driver']} ({driver['DriverCode']})")
+
 # Visualize the results
 plt.figure(figsize=(12, 8))
 sns.barplot(x="Gap to Winner (s)", y="Driver", data=final_standings.iloc[:10], palette="viridis", hue="DriverCode")
-plt.title("Predicted Time Gaps to Winner - 2025 Australian GP", fontsize=16)
+plt.title(f"Predicted Time Gaps to Winner - {race_name}\n(Only Drivers with Historical Data)", fontsize=16)
 plt.xlabel("Gap to Winner (seconds)", fontsize=12)
 plt.ylabel("Driver", fontsize=12)
 plt.tight_layout()
