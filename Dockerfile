@@ -10,16 +10,19 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy the entire project for installation
-COPY . .
+# Copy only requirements first to leverage Docker cache
+COPY requirements.txt pyproject.toml setup.py ./
+COPY README.md ./
+COPY src/ ./src/
+COPY scripts/ ./scripts/
 
 # Create and activate virtual environment
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Upgrade pip and install dependencies
+# Install dependencies and package in development mode
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -e .[dev]
+    pip install --no-cache-dir -e .
 
 # Stage 2: Runtime environment
 FROM python:3.11-slim
@@ -32,8 +35,8 @@ COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy source code and scripts
-COPY src/ ./src/
-COPY scripts/ ./scripts/
+COPY --from=builder /app/src ./src
+COPY --from=builder /app/scripts ./scripts
 
 # Create necessary directories with proper permissions
 RUN mkdir -p /app/data/{raw,processed,external} \
@@ -46,7 +49,7 @@ RUN mkdir -p /app/data/{raw,processed,external} \
 USER nobody
 
 # Set environment variables
-ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app/src
 ENV PYTHONUNBUFFERED=1
 ENV MPLCONFIGDIR=/tmp/matplotlib
 
