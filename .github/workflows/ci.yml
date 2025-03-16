@@ -1,10 +1,15 @@
-name: CI
+name: CI/CD Pipeline
 
 on:
   push:
     branches: [ main ]
+    tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
+
+env:
+  DOCKER_IMAGE: f1predictor
+  DOCKER_REGISTRY: ghcr.io/${{ github.repository_owner }}
 
 jobs:
   test:
@@ -20,32 +25,117 @@ jobs:
       uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
+        cache: 'pip'
         
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip
+        python -m pip install --upgrade pip setuptools wheel
         pip install -e ".[dev]"
         
-    - name: Run linting
+    - name: Check code formatting
       run: |
-        black src/f1predictor tests
         black --check src/f1predictor tests
+        isort --check-only src/f1predictor tests
         
-    - name: Run tests
+    - name: Cache pip packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+        
+    - name: Check test coverage
       run: |
-        pytest tests/ --cov=f1predictor --cov-report=xml
+        pytest --cov=src/f1predictor --cov-fail-under=80 tests/
         
+    - name: Check dependencies
+      run: |
+        pip install safety
+        safety check
+        
+    - name: Run tests with coverage
+      run: |
+        pytest tests/ --cov=f1predictor --cov-report=xml --cov-report=term-missing
+        
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        fail_ci_if_error: fals
+
   docker:
     needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+      
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v2
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Extract metadata for Docker
+      id: meta
+      uses: docker/metadata-action@v4
+      with:
+        images: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=sha,format=long
+    
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        
+    - name: Test Docker image
+      if: github.event_name != 'pull_request'
+      run: |
+        docker pull ${{ fromJson(steps.meta.outputs.json).tags[0] }}
+        docker run --rm ${{ fromJson(steps.meta.outputs.json).tags[0] }} --help
+        
+  deploy-docs:
+    needs: [test, docker]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     
     steps:
     - uses: actions/checkout@v3
     
-    - name: Build Docker image
-      run: docker build -t f1predictor .
-      
-    - name: Test Docker image
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+        cache: 'pip'
+        
+    - name: Install dependencies
       run: |
-        docker run f1predictor --help 
+        python -m pip install --upgrade pip
+        pip install -e ".[docs]"
+        
+    - name: Build documentation
+      run: |
+        cd docs
+        make html
+        
+    - name: Deploy to GitHub Pages
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./docs/_build/html 

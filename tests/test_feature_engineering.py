@@ -1,8 +1,9 @@
 """Tests for the feature engineering module."""
 
-import pytest
-import pandas as pd
 import numpy as np
+import pandas as pd
+import pytest
+
 from src.features.feature_engineering import F1FeatureEngineer
 
 
@@ -32,7 +33,7 @@ def sample_historical_data():
             "Position": [1, 3, 2, 2, 1, 3],
             "DNF": [False, False, True, False, False, False],
             "Status": ["Finished", "Finished", "DNF", "Finished", "Finished", "Finished"],
-            "MedianLapTime": [80.5, 81.0, 80.8, 80.7, 80.3, 81.2]
+            "MedianLapTime": [80.5, 81.0, 80.8, 80.7, 80.3, 81.2],
         }
     )
 

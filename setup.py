@@ -41,6 +41,12 @@ setup(
             "flake8>=3.9",
             "mypy>=0.900",
         ],
+        "docs": [
+            "sphinx",
+            "sphinx-rtd-theme",
+            "myst-parser",
+            "sphinx-autodoc-typehints",
+        ],
     },
     entry_points={
         "console_scripts": [
