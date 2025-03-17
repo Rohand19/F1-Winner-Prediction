@@ -331,7 +331,8 @@ def main():
             )
         
         # Print race results
-        if race_results is not None and not race_results.empty:
+        if race_results is not None:
+            # The race_results should already be formatted from predict_and_visualize
             print_race_results(race_results)
             
             # Save results to CSV
@@ -345,64 +346,123 @@ def main():
                 # 1. Starting grid vs. finishing positions
                 plt.figure(figsize=(12, 8))
                 grid = race_results[['FullName', 'GridPosition', 'Position']].copy()
-                grid = grid[grid['Position'] != 'DNF']  # Filter out DNFs
-                grid['Position'] = grid['Position'].astype(float)
-                grid['GridPosition'] = grid['GridPosition'].astype(float)
-                
+
+                # Filter out DNFs - handle both boolean DNF column and string 'DNF' in Position
+                if 'DNF' in grid.columns:
+                    # If DNF is a boolean column
+                    grid = grid[~grid['DNF']]
+                elif 'FinishStatus' in race_results.columns:
+                    # If we have a FinishStatus column
+                    dnf_indices = race_results[race_results['FinishStatus'].str.contains('DNF', na=False)].index
+                    grid = grid.drop(dnf_indices)
+                else:
+                    # Fallback: filter out rows where Position might be 'DNF' or non-numeric
+                    grid = grid[grid['Position'].apply(lambda x: isinstance(x, (int, float)) or (isinstance(x, str) and x.isdigit()))]
+                    grid['Position'] = pd.to_numeric(grid['Position'], errors='coerce')
+                    grid = grid.dropna(subset=['Position'])
+
+                # Convert to numeric types
+                grid['Position'] = pd.to_numeric(grid['Position'], errors='coerce')
+                grid['GridPosition'] = pd.to_numeric(grid['GridPosition'], errors='coerce')
+                grid = grid.dropna()  # Remove any rows with NaN values after conversion
+
                 # Create empty heatmap matrix
-                max_pos = int(max(grid['GridPosition'].max(), grid['Position'].max()))
-                heatmap = np.zeros((max_pos, max_pos))
-                
-                # Fill heatmap matrix
-                for _, row in grid.iterrows():
-                    start = int(row['GridPosition']) - 1
-                    finish = int(row['Position']) - 1
-                    heatmap[finish, start] += 1
-                
-                # Create heatmap visualization
-                sns.heatmap(heatmap, 
-                            annot=True, 
-                            fmt='g',
-                            cmap='YlOrRd',
-                            xticklabels=range(1, max_pos + 1),
-                            yticklabels=range(1, max_pos + 1))
-                plt.title('Starting Grid vs. Finishing Positions', fontsize=16)
-                plt.xlabel('Finishing Position', fontsize=12)
-                plt.ylabel('Grid Position', fontsize=12)
-                plt.tight_layout()
-                
-                grid_plot_file = os.path.join(args.output_dir, f"grid_vs_finish_{year}_round{race_round}.png")
-                plt.savefig(grid_plot_file, dpi=300, bbox_inches='tight')
-                logger.info(f"Saved grid vs. finish plot to {grid_plot_file}")
+                if not grid.empty and len(grid) > 1:  # Ensure we have at least 2 drivers
+                    max_pos = int(max(grid['GridPosition'].max(), grid['Position'].max()))
+                    heatmap = np.zeros((max_pos, max_pos))
+                    
+                    # Fill heatmap matrix
+                    for _, row in grid.iterrows():
+                        start = int(row['GridPosition']) - 1
+                        finish = int(row['Position']) - 1
+                        heatmap[finish, start] += 1
+                    
+                    # Create heatmap visualization
+                    plt.figure(figsize=(14, 10))
+                    sns.heatmap(heatmap, 
+                                annot=True, 
+                                fmt='g',
+                                cmap='YlOrRd',
+                                xticklabels=range(1, max_pos + 1),
+                                yticklabels=range(1, max_pos + 1))
+                    plt.title(f'{event_name} {year} - Starting Grid vs. Finishing Positions', fontsize=16)
+                    plt.xlabel('Grid Position', fontsize=12)
+                    plt.ylabel('Finishing Position', fontsize=12)
+                    plt.tight_layout()
+                    
+                    grid_plot_file = os.path.join(args.output_dir, f"grid_vs_finish_{year}_round{race_round}.png")
+                    plt.savefig(grid_plot_file, dpi=300, bbox_inches='tight')
+                    logger.info(f"Saved grid vs. finish plot to {grid_plot_file}")
+                else:
+                    logger.warning("Not enough data to create grid vs. finish visualization")
                 
                 # 2. Team performance
-                plt.figure(figsize=(12, 8))
-                team_results = race_results.groupby('TeamName').agg({
-                    'Points': 'sum',
-                    'DriverId': 'count'
-                }).reset_index()
-                team_results = team_results.rename(columns={'DriverId': 'DriversFinished'})
-                team_results = team_results.sort_values('Points', ascending=False)
-                
-                sns.barplot(x='Points', y='TeamName', data=team_results)
-                plt.title('Predicted Team Performance', fontsize=16)
-                plt.xlabel('Points', fontsize=12)
-                plt.ylabel('Team', fontsize=12)
-                
-                # Add points and drivers finishing
-                for i, row in enumerate(team_results.itertuples()):
-                    plt.text(
-                        row.Points + 0.5, i, 
-                        f"{row.Points} pts ({row.DriversFinished} driver{'s' if row.DriversFinished > 1 else ''})",
-                        va='center'
-                    )
-                
-                plt.tight_layout()
-                
-                team_plot_file = os.path.join(args.output_dir, f"team_performance_{year}_round{race_round}.png")
-                plt.savefig(team_plot_file, dpi=300, bbox_inches='tight')
-                logger.info(f"Saved team performance plot to {team_plot_file}")
-                
+                plt.figure(figsize=(14, 10))
+                try:
+                    # Ensure required columns exist
+                    if all(col in race_results.columns for col in ['TeamName', 'Points', 'DriverId']):
+                        team_results = race_results.groupby('TeamName').agg({
+                            'Points': 'sum',
+                            'DriverId': 'count'
+                        }).reset_index()
+                        team_results = team_results.rename(columns={'DriverId': 'DriversFinished'})
+                        team_results = team_results.sort_values('Points', ascending=False)
+                        
+                        if not team_results.empty:
+                            # Use team colors if available
+                            team_colors = {
+                                'Red Bull Racing': '#0600EF',
+                                'Mercedes': '#00D2BE',
+                                'Ferrari': '#DC0000',
+                                'McLaren': '#FF8700',
+                                'Aston Martin': '#006F62',
+                                'Alpine F1 Team': '#0090FF',
+                                'Williams': '#005AFF',
+                                'Visa Cash App RB': '#2B4562',  # Racing Bulls
+                                'Stake F1 Team': '#900000',
+                                'Haas F1 Team': '#FFFFFF',
+                                'Racing Bulls': '#2B4562',  # Alias
+                                'Alpine': '#0090FF',  # Alias
+                                'Sauber': '#900000',  # Alias for Stake F1 Team
+                                'Haas': '#FFFFFF'  # Alias
+                            }
+                            
+                            # Create a color palette for the teams in the results
+                            palette = {team: team_colors.get(team, '#CCCCCC') for team in team_results['TeamName']}
+                            
+                            # Create the bar plot - fix the warning by using hue instead of directly passing palette
+                            ax = sns.barplot(
+                                x='Points', 
+                                y='TeamName', 
+                                hue='TeamName',  # Use TeamName as hue parameter
+                                data=team_results, 
+                                palette=palette,
+                                legend=False  # Hide the legend since it's redundant
+                            )
+                            plt.title(f'{event_name} {year} - Team Performance', fontsize=16)
+                            plt.xlabel('Points', fontsize=12)
+                            plt.ylabel('Team', fontsize=12)
+                            
+                            # Add points and drivers finishing
+                            for i, row in enumerate(team_results.itertuples()):
+                                plt.text(
+                                    row.Points + 0.5, i, 
+                                    f"{row.Points} pts ({row.DriversFinished} driver{'s' if row.DriversFinished > 1 else ''})",
+                                    va='center'
+                                )
+                            
+                            plt.tight_layout()
+                            
+                            team_plot_file = os.path.join(args.output_dir, f"team_performance_{year}_round{race_round}.png")
+                            plt.savefig(team_plot_file, dpi=300, bbox_inches='tight')
+                            logger.info(f"Saved team performance plot to {team_plot_file}")
+                        else:
+                            logger.warning("No team data available for visualization")
+                    else:
+                        logger.warning("Missing required columns for team performance visualization")
+                except Exception as e:
+                    logger.error(f"Error creating team performance visualization: {e}")
+                    plt.close()  # Close the figure to avoid display issues
         else:
             logger.error("Failed to generate race predictions")
             

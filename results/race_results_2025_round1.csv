@@ -1,21 +1,21 @@
-DriverId,FullName,TeamName,GridPosition,Position,FinishTime,FinishStatus,CompletedLaps,DNF
-VER,Max Verstappen,Red Bull Racing,3.0,1,4735.317160479962,Finished,58,False
-HAM,Lewis Hamilton,Ferrari,8.0,2,4755.8662034948175,Finished,58,False
-PIA,Oscar Piastri,McLaren,2.0,3,4759.481778370321,Finished,58,False
-LEC,Charles Leclerc,Ferrari,7.0,4,4783.736306873971,Finished,58,False
-SAI,Carlos Sainz,Williams,10.0,5,4834.615337493229,Finished,58,False
-RUS,George Russell,Mercedes,4.0,6,4848.936360661057,Finished,58,False
-ALO,Fernando Alonso,Aston Martin,12.0,7,4885.467439941718,Finished,58,False
-NOR,Lando Norris,McLaren,1.0,8,4902.824158958647,Finished,58,False
-STR,Lance Stroll,Aston Martin,13.0,9,4941.6910945932195,Finished,58,False
-GAS,Pierre Gasly,Alpine,9.0,10,4946.358085312643,Finished,58,False
-OCO,Esteban Ocon,Haas F1 Team,19.0,11,4954.152408341139,Finished,58,False
-HAD,Isack Hadjar,Racing Bulls,11.0,12,4995.41694484298,Finished,58,False
-DOO,Jack Doohan,Alpine,14.0,13,5077.830787959351,Finished,58,False
-BOR,Gabriel Bortoleto,Kick Sauber,15.0,14,5093.971684773556,Finished,58,False
-ANT,Andrea Kimi Antonelli,Mercedes,16.0,15,5114.95208782731,Finished,58,False
-HUL,Nico Hulkenberg,Kick Sauber,17.0,16,5138.836672855731,Finished,58,False
-LAW,Liam Lawson,Red Bull Racing,18.0,17,5171.116960065725,Finished,58,False
-BEA,Oliver Bearman,Haas F1 Team,20.0,18,5223.764906410552,Finished,58,False
-TSU,Yuki Tsunoda,Racing Bulls,5.0,19,,DNF (Lap 54),54,True
-ALB,Alexander Albon,Williams,6.0,20,,DNF (Lap 4),4,True
+DriverId,FullName,TeamName,GridPosition,Position,FinishTime,FinishStatus,CompletedLaps,DNF,GapToWinner,FormattedGap,FormattedRaceTime,PositionChange,FormattedPositionChange,Points,FastestLap
+HAM,Lewis Hamilton,Ferrari,8.0,1,4407.65122857736,Finished,58,False,0.0,,1:13:27.651,7.0,+7,26,True
+PIA,Oscar Piastri,McLaren,2.0,2,4456.953940396256,Finished,58,False,49.30271181889657,+49.303s,1:14:16.954,0.0,=,18,False
+LEC,Charles Leclerc,Ferrari,7.0,3,4506.447984636923,Finished,58,False,98.79675605956345,+1:38.797,1:15:06.448,4.0,+4,15,False
+RUS,George Russell,Mercedes,4.0,4,4585.365874762843,Finished,58,False,177.71464618548362,+2:57.715,1:16:25.366,0.0,=,12,False
+TSU,Yuki Tsunoda,Racing Bulls,5.0,5,4619.933749335246,Finished,58,False,212.28252075788623,+3:32.283,1:16:59.934,0.0,=,10,False
+SAI,Carlos Sainz,Williams,10.0,6,4632.061795897629,Finished,58,False,224.41056732026937,+3:44.411,1:17:12.062,4.0,+4,8,False
+ALB,Alexander Albon,Williams,6.0,7,4671.075854507656,Finished,58,False,263.4246259302963,+4:23.425,1:17:51.076,-1.0,-1,6,False
+ALO,Fernando Alonso,Aston Martin,12.0,8,4731.95942815465,Finished,58,False,324.30819957729,+5:24.308,1:18:51.959,4.0,+4,4,False
+NOR,Lando Norris,McLaren,1.0,9,4759.752267754561,Finished,58,False,352.1010391772015,+5:52.101,1:19:19.752,-8.0,-8,2,False
+STR,Lance Stroll,Aston Martin,13.0,10,4837.666011896298,Finished,58,False,430.0147833189385,+7:10.015,1:20:37.666,3.0,+3,1,False
+GAS,Pierre Gasly,Alpine,9.0,11,4847.014629936083,Finished,58,False,439.3634013587234,+7:19.363,1:20:47.015,-2.0,-2,0,False
+HAD,Isack Hadjar,Racing Bulls,11.0,12,4906.873385219057,Finished,58,False,499.22215664169744,+8:19.222,1:21:46.873,-1.0,-1,0,False
+OCO,Esteban Ocon,Haas F1 Team,19.0,13,4949.48896294206,Finished,58,False,541.8377343647007,+9:01.838,1:22:29.489,6.0,+6,0,False
+DOO,Jack Doohan,Alpine,14.0,14,5161.727028276386,Finished,58,False,754.075799699026,+12:34.076,1:26:01.727,0.0,=,0,False
+BOR,Gabriel Bortoleto,Kick Sauber,15.0,15,5253.2418515486725,Finished,58,False,845.5906229713128,+14:05.591,1:27:33.242,0.0,=,0,False
+ANT,Andrea Kimi Antonelli,Mercedes,16.0,16,5263.976942827326,Finished,58,False,856.325714249966,+14:16.326,1:27:43.977,0.0,=,0,False
+HUL,Nico Hulkenberg,Kick Sauber,17.0,17,5344.880618307819,Finished,58,False,937.2293897304589,+15:37.229,1:29:04.881,0.0,=,0,False
+LAW,Liam Lawson,Red Bull Racing,18.0,18,5432.545567485154,Finished,58,False,1024.894338907794,+17:04.894,1:30:32.546,0.0,=,0,False
+BEA,Oliver Bearman,Haas F1 Team,20.0,19,,Finished,58,False,,,DNF,1.0,+1,0,False
+VER,Max Verstappen,Red Bull Racing,3.0,20,,DNF (Lap 45),45,True,,DNF,DNF,-17.0,,0,False
