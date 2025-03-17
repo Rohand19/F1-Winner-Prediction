@@ -45,6 +45,13 @@ class F1DataProcessor:
             
         logger.info(f"Initialized F1DataProcessor for {self.current_year} with historical data from {self.historical_years}")
         
+        # Team name mapping for standardization
+        self.team_name_mapping = {
+            'Racing Bulls': 'Visa Cash App Racing Bulls F1 Team',
+            'Visa Cash App RB': 'Visa Cash App Racing Bulls F1 Team',
+            'RB': 'Visa Cash App Racing Bulls F1 Team'
+        }
+        
         # Store collected data
         self.race_data = {}
         self.qualifying_data = {}
@@ -286,86 +293,104 @@ class F1DataProcessor:
             
     def collect_historical_race_data(self, current_year=None, current_round=None, num_races=5, include_practice=False):
         """
-        Collect historical race data for feature engineering with the signature expected by main_predictor.py
+        Collect historical race data for the specified circuit
         
         Args:
-            current_year: Current year
-            current_round: Current round
-            num_races: Number of historical races to collect
-            include_practice: Whether to include practice data
+            current_year: Current year (default: self.current_year)
+            current_round: Current race round (default: None)
+            num_races: Number of historical races to collect (default: 5)
+            include_practice: Whether to include practice session data (default: False)
             
         Returns:
             Dictionary with historical race data
         """
-        # Try to get circuit name from the schedule
-        circuit_name = None
-        if current_year and current_round:
-            try:
-                schedule = self.get_season_schedule(current_year)
-                if schedule is not None:
-                    event = schedule[schedule['RoundNumber'] == current_round]
-                    if not event.empty:
-                        # Check for different possible column names for circuit
-                        if 'CircuitName' in event.columns:
-                            circuit_name = event.iloc[0]['CircuitName']
-                        elif 'Circuit' in event.columns:
-                            circuit_name = event.iloc[0]['Circuit']
-                        elif 'Location' in event.columns:
-                            circuit_name = event.iloc[0]['Location']
-                        else:
-                            # If we can't find the circuit name, use a default
-                            logger.warning("Could not find circuit name in schedule, using event name instead")
-                            if 'EventName' in event.columns:
-                                circuit_name = event.iloc[0]['EventName']
-                            else:
-                                circuit_name = f"Round {current_round}"
-            except Exception as e:
-                logger.warning(f"Error getting circuit name from schedule: {e}")
-                circuit_name = f"Round {current_round}"
-        
-        # If we still don't have a circuit name, use a default
-        if not circuit_name:
-            circuit_name = f"Round {current_round}" if current_round else "Unknown Circuit"
+        try:
+            current_year = current_year or self.current_year
+            if current_round is None:
+                current_round = self.get_upcoming_race()["RoundNumber"]
+                
+            # Get circuit name for current race
+            current_race = self.get_event_schedule(current_year, current_round)
+            if current_race.empty:
+                logger.warning(f"No race found for year {current_year} and round {current_round}")
+                return {"race": pd.DataFrame(), "practice": pd.DataFrame()}
+                
+            # Get circuit name from available columns
+            circuit_name = None
+            if 'Location' in current_race.columns:
+                circuit_name = current_race["Location"].iloc[0]
+            elif 'CircuitName' in current_race.columns:
+                circuit_name = current_race["CircuitName"].iloc[0]
+            elif 'Circuit' in current_race.columns:
+                circuit_name = current_race["Circuit"].iloc[0]
+            elif 'EventName' in current_race.columns:
+                circuit_name = current_race["EventName"].iloc[0]
+            else:
+                logger.warning("Could not find circuit name in schedule")
+                return {"race": pd.DataFrame(), "practice": pd.DataFrame()}
+                
+            # Collect historical race data
+            historical_data = {"race": pd.DataFrame(), "practice": pd.DataFrame()}
             
-        logger.info(f"Creating mock historical data for circuit: {circuit_name}")
-        
-        # Create mock historical data for testing
-        mock_data = {
-            'race': pd.DataFrame({
-                'DriverId': ['VER', 'HAM', 'LEC', 'PER', 'SAI', 'RUS', 'ALO', 'NOR', 'STR', 'OCO'],
-                'FullName': ['Max Verstappen', 'Lewis Hamilton', 'Charles Leclerc', 'Sergio Perez', 'Carlos Sainz',
-                            'George Russell', 'Fernando Alonso', 'Lando Norris', 'Lance Stroll', 'Esteban Ocon'],
-                'TeamName': ['Red Bull', 'Mercedes', 'Ferrari', 'Red Bull', 'Ferrari',
-                            'Mercedes', 'Aston Martin', 'McLaren', 'Aston Martin', 'Alpine'],
-                'Position': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-                'MedianLapTime': [90.0, 90.5, 91.0, 91.2, 91.5, 91.7, 92.0, 92.2, 92.5, 92.7],
-                'Year': [current_year-1] * 10,
-                'Round': [current_round] * 10,
-                'EventName': ['Test Race'] * 10,
-                'CircuitName': [circuit_name] * 10,
-                'Status': ['Finished'] * 10,
-                'GridPosition': [1, 3, 2, 4, 5, 6, 8, 7, 10, 9],
-                'Finished': [True] * 10,
-                'Laps': [58] * 10
-            }),
-            'qualifying': pd.DataFrame({
-                'DriverId': ['VER', 'HAM', 'LEC', 'PER', 'SAI', 'RUS', 'ALO', 'NOR', 'STR', 'OCO'],
-                'FullName': ['Max Verstappen', 'Lewis Hamilton', 'Charles Leclerc', 'Sergio Perez', 'Carlos Sainz',
-                            'George Russell', 'Fernando Alonso', 'Lando Norris', 'Lance Stroll', 'Esteban Ocon'],
-                'TeamName': ['Red Bull', 'Mercedes', 'Ferrari', 'Red Bull', 'Ferrari',
-                            'Mercedes', 'Aston Martin', 'McLaren', 'Aston Martin', 'Alpine'],
-                'Position': [1, 3, 2, 4, 5, 6, 8, 7, 10, 9],
-                'BestTime': [85.0, 85.8, 85.5, 86.0, 86.2, 86.5, 87.0, 86.8, 87.5, 87.3],
-                'Year': [current_year-1] * 10,
-                'Round': [current_round] * 10,
-                'EventName': ['Test Race'] * 10,
-                'CircuitName': [circuit_name] * 10
-            }),
-            'practice': pd.DataFrame()
-        }
-        
-        logger.info(f"Created mock historical data for {len(mock_data['race'])} drivers")
-        return mock_data
+            # Get races from previous years
+            for year in self.historical_years:
+                try:
+                    # Find the race at this circuit
+                    year_schedule = self.get_season_schedule(year)
+                    if year_schedule is None or year_schedule.empty:
+                        continue
+                        
+                    # Try to match circuit name using different column names
+                    circuit_race = None
+                    for col in ['Location', 'CircuitName', 'Circuit', 'EventName']:
+                        if col in year_schedule.columns:
+                            circuit_race = year_schedule[year_schedule[col] == circuit_name]
+                            if not circuit_race.empty:
+                                break
+                                
+                    if circuit_race is None or circuit_race.empty:
+                        logger.debug(f"No matching race found for {circuit_name} in {year}")
+                        continue
+                        
+                    race_round = circuit_race["RoundNumber"].iloc[0]
+                    
+                    # Load race data
+                    race_data = self.load_session_data(year, race_round, "Race")
+                    if race_data is not None:
+                        race_results = self.process_race_data(race_data)
+                        if not race_results.empty:
+                            race_results["Year"] = year
+                            race_results["Round"] = race_round
+                            historical_data["race"] = pd.concat([historical_data["race"], race_results])
+                            
+                    # Load practice data if requested
+                    if include_practice:
+                        for session in ["Practice 1", "Practice 2", "Practice 3"]:
+                            practice_data = self.load_session_data(year, race_round, session)
+                            if practice_data is not None:
+                                practice_results = self.process_lap_data(practice_data)
+                                if not practice_results.empty:
+                                    practice_results["Year"] = year
+                                    practice_results["Round"] = race_round
+                                    practice_results["Session"] = session
+                                    historical_data["practice"] = pd.concat([historical_data["practice"], practice_results])
+                                    
+                except Exception as e:
+                    logger.warning(f"Error loading data for {year} {circuit_name}: {e}")
+                    continue
+                    
+            # Sort by date if available
+            if not historical_data["race"].empty and "Date" in historical_data["race"].columns:
+                historical_data["race"] = historical_data["race"].sort_values("Date", ascending=False)
+                
+            if not historical_data["practice"].empty and "Date" in historical_data["practice"].columns:
+                historical_data["practice"] = historical_data["practice"].sort_values("Date", ascending=False)
+                
+            return historical_data
+            
+        except Exception as e:
+            logger.error(f"Error collecting historical race data: {e}")
+            return {"race": pd.DataFrame(), "practice": pd.DataFrame()}
     
     def collect_current_event_data(self, gp_name=None, gp_round=None):
         """
@@ -796,6 +821,17 @@ class F1DataProcessor:
             logger.error(f"Error getting track info: {e}")
             return self._create_default_track_info(round)
     
+    def standardize_team_name(self, team_name):
+        """Standardize team names using the mapping.
+        
+        Args:
+            team_name: The team name to standardize
+            
+        Returns:
+            The standardized team name
+        """
+        return self.team_name_mapping.get(team_name, team_name)
+        
     def _create_default_track_info(self, round):
         """
         Create default track info when actual data is not available

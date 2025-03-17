@@ -40,6 +40,18 @@ class F1FeatureEngineer:
             team_results = historical_races.groupby("TeamName")
             
             for team_name, results in team_results:
+                # Standardize team name
+                if prediction_data.get("data_processor"):
+                    team_name = prediction_data["data_processor"].standardize_team_name(team_name)
+                else:
+                    # Fallback team name mapping if no data processor
+                    team_name_mapping = {
+                        'Racing Bulls': 'Visa Cash App Racing Bulls F1 Team',
+                        'Visa Cash App RB': 'Visa Cash App Racing Bulls F1 Team',
+                        'RB': 'Visa Cash App Racing Bulls F1 Team'
+                    }
+                    team_name = team_name_mapping.get(team_name, team_name)
+                
                 # Calculate average finish position
                 if "Status" in results.columns:
                     finished_races = results[results["Status"] == "Finished"]
@@ -469,11 +481,11 @@ class F1FeatureEngineer:
             # Check if we have valid input data
             if qualifying_results is None or qualifying_results.empty:
                 logger.warning("No qualifying results available for feature engineering")
-                return self._create_mock_features()
+                return pd.DataFrame()
             
             if historical_data is None or not isinstance(historical_data, dict):
                 logger.warning("No valid historical data available for feature engineering")
-                return self._create_mock_features()
+                return pd.DataFrame()
             
             # Create basic features from qualifying results
             race_features = qualifying_results.copy()
@@ -587,25 +599,4 @@ class F1FeatureEngineer:
             return race_features
         except Exception as e:
             logger.error(f"Error in feature engineering: {e}")
-            return self._create_mock_features()
-        
-    def _create_mock_features(self):
-        """
-        Create mock features for testing when real data is unavailable
-        """
-        logger.warning("Creating mock features for testing")
-        
-        # Create basic mock data
-        mock_features = pd.DataFrame({
-            'DriverId': ['VER', 'HAM', 'LEC', 'PER', 'SAI', 'RUS', 'ALO', 'NOR', 'STR', 'OCO'],
-            'FullName': ['Max Verstappen', 'Lewis Hamilton', 'Charles Leclerc', 'Sergio Perez', 'Carlos Sainz',
-                        'George Russell', 'Fernando Alonso', 'Lando Norris', 'Lance Stroll', 'Esteban Ocon'],
-            'TeamName': ['Red Bull', 'Mercedes', 'Ferrari', 'Red Bull', 'Ferrari',
-                        'Mercedes', 'Aston Martin', 'McLaren', 'Aston Martin', 'Alpine'],
-            'GridPosition': [1, 3, 2, 4, 5, 6, 8, 7, 10, 9],
-            'RacePaceScore': [0.95, 0.92, 0.90, 0.88, 0.87, 0.85, 0.82, 0.83, 0.78, 0.79],
-            'ProjectedPosition': [1.2, 2.8, 2.5, 4.2, 5.1, 6.3, 8.2, 7.5, 10.1, 9.8],
-            'DNFProbability': [0.05, 0.07, 0.08, 0.10, 0.09, 0.08, 0.12, 0.11, 0.15, 0.14]
-        })
-        
-        return mock_features 
+            return pd.DataFrame() 

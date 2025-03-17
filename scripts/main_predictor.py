@@ -421,7 +421,8 @@ def main():
                                 'Visa Cash App RB': '#2B4562',  # Racing Bulls
                                 'Stake F1 Team': '#900000',
                                 'Haas F1 Team': '#FFFFFF',
-                                'Racing Bulls': '#2B4562',  # Alias
+                                'Visa Cash App Racing Bulls F1 Team': '#2B4562',  # Main team name
+                                'Racing Bulls': '#2B4562',  # Legacy alias
                                 'Alpine': '#0090FF',  # Alias
                                 'Sauber': '#900000',  # Alias for Stake F1 Team
                                 'Haas': '#FFFFFF'  # Alias

@@ -1,21 +1,21 @@
 DriverId,FullName,TeamName,GridPosition,Position,FinishTime,FinishStatus,CompletedLaps,DNF,GapToWinner,FormattedGap,FormattedRaceTime,PositionChange,FormattedPositionChange,Points,FastestLap
-HAM,Lewis Hamilton,Ferrari,8.0,1,4407.65122857736,Finished,58,False,0.0,,1:13:27.651,7.0,+7,26,True
-PIA,Oscar Piastri,McLaren,2.0,2,4456.953940396256,Finished,58,False,49.30271181889657,+49.303s,1:14:16.954,0.0,=,18,False
-LEC,Charles Leclerc,Ferrari,7.0,3,4506.447984636923,Finished,58,False,98.79675605956345,+1:38.797,1:15:06.448,4.0,+4,15,False
-RUS,George Russell,Mercedes,4.0,4,4585.365874762843,Finished,58,False,177.71464618548362,+2:57.715,1:16:25.366,0.0,=,12,False
-TSU,Yuki Tsunoda,Racing Bulls,5.0,5,4619.933749335246,Finished,58,False,212.28252075788623,+3:32.283,1:16:59.934,0.0,=,10,False
-SAI,Carlos Sainz,Williams,10.0,6,4632.061795897629,Finished,58,False,224.41056732026937,+3:44.411,1:17:12.062,4.0,+4,8,False
-ALB,Alexander Albon,Williams,6.0,7,4671.075854507656,Finished,58,False,263.4246259302963,+4:23.425,1:17:51.076,-1.0,-1,6,False
-ALO,Fernando Alonso,Aston Martin,12.0,8,4731.95942815465,Finished,58,False,324.30819957729,+5:24.308,1:18:51.959,4.0,+4,4,False
-NOR,Lando Norris,McLaren,1.0,9,4759.752267754561,Finished,58,False,352.1010391772015,+5:52.101,1:19:19.752,-8.0,-8,2,False
-STR,Lance Stroll,Aston Martin,13.0,10,4837.666011896298,Finished,58,False,430.0147833189385,+7:10.015,1:20:37.666,3.0,+3,1,False
-GAS,Pierre Gasly,Alpine,9.0,11,4847.014629936083,Finished,58,False,439.3634013587234,+7:19.363,1:20:47.015,-2.0,-2,0,False
-HAD,Isack Hadjar,Racing Bulls,11.0,12,4906.873385219057,Finished,58,False,499.22215664169744,+8:19.222,1:21:46.873,-1.0,-1,0,False
-OCO,Esteban Ocon,Haas F1 Team,19.0,13,4949.48896294206,Finished,58,False,541.8377343647007,+9:01.838,1:22:29.489,6.0,+6,0,False
-DOO,Jack Doohan,Alpine,14.0,14,5161.727028276386,Finished,58,False,754.075799699026,+12:34.076,1:26:01.727,0.0,=,0,False
-BOR,Gabriel Bortoleto,Kick Sauber,15.0,15,5253.2418515486725,Finished,58,False,845.5906229713128,+14:05.591,1:27:33.242,0.0,=,0,False
-ANT,Andrea Kimi Antonelli,Mercedes,16.0,16,5263.976942827326,Finished,58,False,856.325714249966,+14:16.326,1:27:43.977,0.0,=,0,False
-HUL,Nico Hulkenberg,Kick Sauber,17.0,17,5344.880618307819,Finished,58,False,937.2293897304589,+15:37.229,1:29:04.881,0.0,=,0,False
-LAW,Liam Lawson,Red Bull Racing,18.0,18,5432.545567485154,Finished,58,False,1024.894338907794,+17:04.894,1:30:32.546,0.0,=,0,False
-BEA,Oliver Bearman,Haas F1 Team,20.0,19,,Finished,58,False,,,DNF,1.0,+1,0,False
-VER,Max Verstappen,Red Bull Racing,3.0,20,,DNF (Lap 45),45,True,,DNF,DNF,-17.0,,0,False
+ANT,Andrea Kimi Antonelli,Mercedes,16.0,1,4827.271352463577,Finished,58,False,0.0,,1:20:27.271,15.0,+15,26,True
+PIA,Oscar Piastri,McLaren,2.0,2,4834.259003072823,Finished,58,False,6.987650609245975,+6.988s,1:20:34.259,0.0,=,18,False
+OCO,Esteban Ocon,Haas F1 Team,19.0,3,4847.391173346035,Finished,58,False,20.119820882458043,+20.120s,1:20:47.391,16.0,+16,15,False
+BOR,Gabriel Bortoleto,Kick Sauber,15.0,4,4847.76308214202,Finished,58,False,20.491729678442425,+20.492s,1:20:47.763,11.0,+11,12,False
+HUL,Nico Hulkenberg,Kick Sauber,17.0,5,4855.537183541979,Finished,58,False,28.26583107840179,+28.266s,1:20:55.537,12.0,+12,10,False
+ALB,Alexander Albon,Williams,6.0,6,4863.19033882146,Finished,58,False,35.918986357882204,+35.919s,1:21:03.190,0.0,=,8,False
+TSU,Yuki Tsunoda,Visa Cash App Racing Bulls F1 Team,5.0,7,4863.47838474781,Finished,58,False,36.20703228423281,+36.207s,1:21:03.478,-2.0,-2,6,False
+VER,Max Verstappen,Red Bull Racing,3.0,8,4863.799198653265,Finished,58,False,36.52784618968781,+36.528s,1:21:03.799,-5.0,-5,4,False
+GAS,Pierre Gasly,Alpine,9.0,9,4865.164591484254,Finished,58,False,37.89323902067645,+37.893s,1:21:05.165,0.0,=,2,False
+LAW,Liam Lawson,Red Bull Racing,18.0,10,4865.397265537665,Finished,58,False,38.12591307408729,+38.126s,1:21:05.397,8.0,+8,1,False
+HAM,Lewis Hamilton,Ferrari,8.0,11,4868.5680810797185,Finished,58,False,41.29672861614108,+41.297s,1:21:08.568,-3.0,-3,0,False
+SAI,Carlos Sainz,Williams,10.0,12,4873.183685581405,Finished,58,False,45.912333117827984,+45.912s,1:21:13.184,-2.0,-2,0,False
+RUS,George Russell,Mercedes,4.0,13,4875.834773715605,Finished,58,False,48.56342125202718,+48.563s,1:21:15.835,-9.0,-9,0,False
+BEA,Oliver Bearman,Haas F1 Team,20.0,14,4880.509868442034,Finished,58,False,53.238515978456235,+53.239s,1:21:20.510,6.0,+6,0,False
+LEC,Charles Leclerc,Ferrari,7.0,15,4892.394364700559,Finished,58,False,65.1230122369816,+1:05.123,1:21:32.394,-8.0,-8,0,False
+ALO,Fernando Alonso,Aston Martin,12.0,16,4904.4007547831125,Finished,58,False,77.12940231953507,+1:17.129,1:21:44.401,-4.0,-4,0,False
+STR,Lance Stroll,Aston Martin,13.0,17,4908.807782572713,Finished,58,False,81.53643010913584,+1:21.536,1:21:48.808,-4.0,-4,0,False
+HAD,Isack Hadjar,Visa Cash App Racing Bulls F1 Team,11.0,18,4929.645358705664,Finished,58,False,102.37400624208658,+1:42.374,1:22:09.645,-7.0,-7,0,False
+NOR,Lando Norris,McLaren,1.0,19,,DNF (Lap 17),17,True,,DNF,DNF,-18.0,,0,False
+DOO,Jack Doohan,Alpine,14.0,20,,DNF (Lap 8),8,True,,DNF,DNF,-6.0,,0,False

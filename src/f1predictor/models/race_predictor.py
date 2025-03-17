@@ -1,6 +1,7 @@
 import logging
 import random
 from datetime import timedelta
+import os
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -66,6 +67,18 @@ class RacePredictor:
                 if col not in race_features.columns:
                     logger.error(f"Missing required column: {col}")
                     return pd.DataFrame()
+
+            # Standardize team names if data processor is available
+            if hasattr(race_features, 'data_processor'):
+                race_features['TeamName'] = race_features['TeamName'].apply(race_features.data_processor.standardize_team_name)
+            else:
+                # Fallback team name mapping if no data processor
+                team_name_mapping = {
+                    'Racing Bulls': 'Visa Cash App Racing Bulls F1 Team',
+                    'Visa Cash App RB': 'Visa Cash App Racing Bulls F1 Team',
+                    'RB': 'Visa Cash App Racing Bulls F1 Team'
+                }
+                race_features['TeamName'] = race_features['TeamName'].map(lambda x: team_name_mapping.get(x, x))
 
             # Apply performance adjustments if race_info is provided
             if race_info:
@@ -347,26 +360,19 @@ class RacePredictor:
 
         return with_points
 
-    def visualize_race_results(self, results_df, save_path=None):
+    def visualize_race_results(self, race_results, output_dir="results"):
         """
-        Visualize race results with time gaps to winner and a summary table.
+        Visualize race results with team colors
         
         Args:
-            results_df (pd.DataFrame): DataFrame containing race results
-            save_path (str, optional): Path to save the visualization. If None, displays the plot.
+            race_results: DataFrame with race results
+            output_dir: Directory to save visualizations
         """
         try:
-            # Create figure with two subplots
-            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 8))
-            fig.suptitle('Race Results Analysis', fontsize=16)
+            # Ensure output directory exists
+            os.makedirs(output_dir, exist_ok=True)
             
-            # Filter finished drivers and calculate gaps
-            finished = results_df[~results_df['DNF']].copy()
-            if not finished.empty:
-                winner_time = finished['FinishTime'].min()
-                finished['GapToWinnerFormatted'] = (finished['FinishTime'] - winner_time).round(3)
-            
-            # Plot time gaps to winner with team-specific colors
+            # Team colors dictionary
             team_colors = {
                 'Red Bull Racing': '#0600EF',
                 'Mercedes': '#00D2BE',
@@ -375,79 +381,54 @@ class RacePredictor:
                 'Aston Martin': '#006F62',
                 'Alpine F1 Team': '#0090FF',
                 'Williams': '#005AFF',
-                'Visa Cash App RB': '#2B4562',  # Racing Bulls
-                'Stake F1 Team': '#900000',
+                'Visa Cash App Racing Bulls F1 Team': '#2B4562',  # Main team name
+                'Kick Sauber': '#900000',  # Updated team name
                 'Haas F1 Team': '#FFFFFF',
-                'Racing Bulls': '#2B4562',  # Alias
                 'Alpine': '#0090FF',  # Alias
-                'Sauber': '#900000',  # Alias for Stake F1 Team
+                'Sauber': '#900000',  # Alias for Kick Sauber
                 'Haas': '#FFFFFF'  # Alias
             }
-
-            if not finished.empty:
-                # Map any team name variations to standard names
-                team_name_mapping = {
-                    'Racing Bulls': 'Visa Cash App RB',
-                    'Alpine': 'Alpine F1 Team',
-                    'Sauber': 'Stake F1 Team',
-                    'Haas': 'Haas F1 Team'
-                }
+            
+            # Team name mapping for standardization
+            team_name_mapping = {
+                'Racing Bulls': 'Visa Cash App Racing Bulls F1 Team',
+                'Visa Cash App RB': 'Visa Cash App Racing Bulls F1 Team',
+                'RB': 'Visa Cash App Racing Bulls F1 Team',
+                'Alpine': 'Alpine F1 Team',
+                'Sauber': 'Kick Sauber',
+                'Haas': 'Haas F1 Team'
+            }
+            
+            # Standardize team names
+            race_results['TeamName'] = race_results['TeamName'].map(lambda x: team_name_mapping.get(x, x))
+            
+            # Create visualization
+            plt.figure(figsize=(12, 6))
+            
+            # Plot race results with team colors
+            for _, result in race_results.iterrows():
+                team_name = result['TeamName']
+                color = team_colors.get(team_name, '#808080')  # Default to gray if team not found
                 
-                # Standardize team names
-                finished['TeamName'] = finished['TeamName'].map(lambda x: team_name_mapping.get(x, x))
-                
-                sns.barplot(
-                    x="GapToWinnerFormatted",
-                    y="FullName",
-                    data=finished.iloc[:10],  # Top 10 finishers
-                    hue="TeamName",
-                    palette=team_colors,
-                    ax=ax1
-                )
+                plt.bar(result['Position'], 1, color=color, alpha=0.7)
+                plt.text(result['Position'], 0.5, f"{result['DriverId']}\n{team_name}", 
+                        ha='center', va='center', color='white', fontweight='bold')
             
-                ax1.set_title('Time Gaps to Winner')
-                ax1.set_xlabel('Gap to Winner (seconds)')
-                ax1.set_ylabel('Driver')
-            else:
-                ax1.text(0.5, 0.5, 'No finished drivers to display', 
-                        ha='center', va='center', transform=ax1.transAxes)
-                ax1.set_title('No Race Data')
+            plt.title('Race Results by Team')
+            plt.xlabel('Position')
+            plt.ylabel('')
+            plt.ylim(0, 1)
+            plt.grid(True, alpha=0.3)
             
-            # Create summary table
-            summary_data = results_df[['Position', 'FullName', 'TeamName', 'FinishStatus']].copy()
-            summary_data.columns = ['Pos', 'Driver', 'Team', 'Status']
+            # Save plot
+            output_file = os.path.join(output_dir, 'race_results.png')
+            plt.savefig(output_file)
+            plt.close()
             
-            table = ax2.table(
-                cellText=summary_data.values,
-                colLabels=summary_data.columns,
-                cellLoc='center',
-                loc='center',
-                bbox=[0.1, 0.1, 0.8, 0.8]
-            )
+            logger.info(f"Saved race results visualization to {output_file}")
             
-            # Style the table
-            table.auto_set_font_size(False)
-            table.set_fontsize(9)
-            table.scale(1.2, 1.5)
-            
-            # Hide axis for table subplot
-            ax2.axis('off')
-            ax2.set_title('Race Results Summary')
-            
-            # Adjust layout and save/show plot
-            plt.tight_layout()
-            
-            if save_path:
-                # Ensure the save path has a .png extension
-                if not save_path.endswith('.png'):
-                    save_path = save_path.rsplit('.', 1)[0] + '.png'
-                plt.savefig(save_path, dpi=300, bbox_inches='tight')
-                plt.close()
-            else:
-                plt.show()
-                
         except Exception as e:
-            logger.error(f"Error visualizing race results: {str(e)}")
+            logger.error(f"Error visualizing race results: {e}")
 
     def predict_and_visualize(self, race_features, title=None, output_file=None, race_info=None):
         """
@@ -479,7 +460,7 @@ class RacePredictor:
             formatted_results_with_points = self.calculate_points(formatted_results)
 
             # Create visualization
-            self.visualize_race_results(formatted_results_with_points, save_path=output_file)
+            self.visualize_race_results(formatted_results_with_points, output_dir=output_file)
 
             return formatted_results_with_points  # Return formatted results with points
         except Exception as e:
