@@ -481,46 +481,108 @@ class F1FeatureEngineer:
             # Add grid position
             race_features["GridPosition"] = race_features["Position"].astype(float)
             
-            # Add race pace score (default values for testing)
-            race_features["RacePaceScore"] = 0.5  # Default mid-range value
-            
-            # Add projected position (initially same as grid position)
+            # Initialize race pace score and projected position
+            race_features["RacePaceScore"] = 0.5
             race_features["ProjectedPosition"] = race_features["GridPosition"]
-            
-            # Add DNF probability (default low value)
-            race_features["DNFProbability"] = 0.1  # Default 10% chance
+            race_features["DNFProbability"] = 0.1
             
             # Enhance features with historical data if available
             if 'race' in historical_data and not historical_data['race'].empty:
-                # Calculate average finish position from historical data
-                driver_stats = historical_data['race'].groupby('DriverId').agg({
-                    'Position': 'mean',
-                    'Status': lambda x: (x != 'Finished').mean()  # DNF rate
-                }).reset_index()
-                
-                driver_stats.columns = ['DriverId', 'AvgPosition', 'DNFRate']
-                
-                # Merge with race features
-                race_features = race_features.merge(driver_stats, on='DriverId', how='left')
-                
+                historical_races = historical_data['race'].copy()
+
+                # Sort historical races by date to give more weight to recent results
+                if 'Date' in historical_races.columns:
+                    historical_races['Date'] = pd.to_datetime(historical_races['Date'])
+                    historical_races = historical_races.sort_values('Date')
+
+                # Calculate weighted average finish position
+                driver_stats = []
+                for driver_id in race_features['DriverId'].unique():
+                    driver_races = historical_races[historical_races['DriverId'] == driver_id]
+                    
+                    if not driver_races.empty:
+                        # Calculate exponentially weighted averages
+                        positions = driver_races['Position'].astype(float)
+                        weights = np.exp(np.linspace(-1, 0, len(positions)))
+                        weights /= weights.sum()
+                        
+                        avg_position = np.average(positions, weights=weights)
+                        recent_position = positions.iloc[-1] if len(positions) > 0 else avg_position
+                        
+                        # Calculate DNF rate with more weight on recent races
+                        if 'Status' in driver_races.columns:
+                            dnf_series = (driver_races['Status'] != 'Finished')
+                        else:
+                            dnf_series = driver_races['DNF']
+                            
+                        weighted_dnf_rate = np.average(dnf_series, weights=weights)
+                        
+                        # Calculate form based on position improvements
+                        position_changes = []
+                        for _, race in driver_races.iterrows():
+                            if pd.notna(race['GridPosition']) and pd.notna(race['Position']):
+                                change = float(race['GridPosition']) - float(race['Position'])
+                                position_changes.append(change)
+                                
+                        if position_changes:
+                            recent_form = np.mean(position_changes[-3:]) if len(position_changes) >= 3 else np.mean(position_changes)
+                        else:
+                            recent_form = 0
+                            
+                        driver_stats.append({
+                            'DriverId': driver_id,
+                            'AvgPosition': avg_position,
+                            'RecentPosition': recent_position,
+                            'DNFRate': weighted_dnf_rate,
+                            'RecentForm': recent_form
+                        })
+
+                driver_stats_df = pd.DataFrame(driver_stats)
+                race_features = race_features.merge(driver_stats_df, on='DriverId', how='left')
+
                 # Fill missing values
                 race_features['AvgPosition'] = race_features['AvgPosition'].fillna(race_features['GridPosition'])
+                race_features['RecentPosition'] = race_features['RecentPosition'].fillna(race_features['GridPosition'])
                 race_features['DNFRate'] = race_features['DNFRate'].fillna(0.1)
-                
-                # Update projected position based on historical performance
-                race_features['ProjectedPosition'] = (race_features['GridPosition'] * 0.6 + 
-                                                    race_features['AvgPosition'] * 0.4)
-                
-                # Update DNF probability
-                race_features['DNFProbability'] = race_features['DNFRate']
-                
-                # Calculate race pace score (0-1 where 1 is best)
-                max_pos = race_features['AvgPosition'].max()
-                if max_pos > 0:
-                    race_features['RacePaceScore'] = 1 - (race_features['AvgPosition'] / max_pos)
+                race_features['RecentForm'] = race_features['RecentForm'].fillna(0)
+
+                # Calculate qualifying performance (0-1 scale)
+                if 'BestTime' in race_features.columns:
+                    pole_time = race_features.loc[race_features['Position'] == 1, 'BestTime'].iloc[0]
+                    race_features['QualifyingPerformance'] = 1 - ((race_features['BestTime'] - pole_time) / pole_time)
                 else:
-                    race_features['RacePaceScore'] = 0.5
-            
+                    # Use grid position if no timing data available
+                    race_features['QualifyingPerformance'] = 1 - ((race_features['GridPosition'] - 1) / (len(race_features) - 1))
+
+                # Update projected position with new weights
+                # Increased weight for qualifying and recent performance
+                race_features['ProjectedPosition'] = (
+                    race_features['GridPosition'] * 0.35 +          # Qualifying position (35%)
+                    race_features['RecentPosition'] * 0.30 +        # Recent race results (30%)
+                    race_features['AvgPosition'] * 0.20 +           # Historical average (20%)
+                    (race_features['GridPosition'] - race_features['RecentForm']) * 0.15  # Form adjustment (15%)
+                )
+
+                # Ensure projected positions are within valid range
+                race_features['ProjectedPosition'] = race_features['ProjectedPosition'].clip(1, len(race_features))
+
+                # Calculate race pace score (0-1 where 1 is best)
+                race_features['RacePaceScore'] = (
+                    race_features['QualifyingPerformance'] * 0.40 +  # Qualifying performance (40%)
+                    (1 - race_features['RecentPosition']/20) * 0.35 +  # Recent results (35%)
+                    (1 - race_features['AvgPosition']/20) * 0.25      # Historical performance (25%)
+                )
+
+                # Normalize RacePaceScore to 0-1 range
+                min_pace = race_features['RacePaceScore'].min()
+                max_pace = race_features['RacePaceScore'].max()
+                if max_pace > min_pace:
+                    race_features['RacePaceScore'] = (race_features['RacePaceScore'] - min_pace) / (max_pace - min_pace)
+                
+                # Add random variation to prevent identical predictions
+                race_features['RacePaceScore'] += np.random.normal(0, 0.02, len(race_features))
+                race_features['RacePaceScore'] = race_features['RacePaceScore'].clip(0, 1)
+
             logger.info(f"Engineered features for {len(race_features)} drivers")
             return race_features
         except Exception as e:
