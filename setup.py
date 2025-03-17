@@ -54,4 +54,4 @@ setup(
             "f1predict-quick=f1predictor.scripts.run_prediction:main",
         ],
     },
-) 
+)

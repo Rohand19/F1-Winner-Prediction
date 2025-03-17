@@ -30,12 +30,12 @@ class F1ModelTrainer:
         self.feature_importance = {}
         self.model = None
         self.feature_columns = [
-            'Position',
-            'QualifyingPerformance',
-            'DNFProbability',
-            'RacePaceScore'
+            "Position",
+            "QualifyingPerformance",
+            "DNFProbability",
+            "RacePaceScore",
         ]
-        self.target_column = 'ProjectedPosition'
+        self.target_column = "ProjectedPosition"
         self.scaler = StandardScaler()
 
         # Create models directory if it doesn't exist
@@ -136,7 +136,13 @@ class F1ModelTrainer:
             logger.debug("Exception details:", exc_info=True)
             return None, None, None
 
-    def train_model(self, race_features: pd.DataFrame, model_type: str = "xgboost", tune_hyperparams: bool = False, target_column: str = "ProjectedPosition"):
+    def train_model(
+        self,
+        race_features: pd.DataFrame,
+        model_type: str = "xgboost",
+        tune_hyperparams: bool = False,
+        target_column: str = "ProjectedPosition",
+    ):
         """
         Train a model using the provided race features.
 
@@ -151,7 +157,11 @@ class F1ModelTrainer:
         """
         try:
             # Check if race_features is None, empty DataFrame, or empty dictionary
-            if race_features is None or (isinstance(race_features, pd.DataFrame) and race_features.empty) or (isinstance(race_features, dict) and not race_features):
+            if (
+                race_features is None
+                or (isinstance(race_features, pd.DataFrame) and race_features.empty)
+                or (isinstance(race_features, dict) and not race_features)
+            ):
                 logger.error("No features provided for training")
                 return None
 
@@ -161,7 +171,11 @@ class F1ModelTrainer:
 
             # Prepare features and target
             X = race_features[self.feature_columns]
-            y = race_features[target_column] if target_column in race_features.columns else race_features['GridPosition']
+            y = (
+                race_features[target_column]
+                if target_column in race_features.columns
+                else race_features["GridPosition"]
+            )
 
             # Handle missing values
             X = X.fillna(X.mean())
@@ -170,63 +184,54 @@ class F1ModelTrainer:
             X_scaled = self.scaler.fit_transform(X)
 
             # Split data
-            X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
+            X_train, X_test, y_train, y_test = train_test_split(
+                X_scaled, y, test_size=0.2, random_state=42
+            )
 
             # Select and train model
             if model_type == "xgboost":
                 if tune_hyperparams:
                     param_grid = {
-                        'n_estimators': [100, 200, 300],
-                        'max_depth': [3, 4, 5],
-                        'learning_rate': [0.01, 0.1, 0.3]
+                        "n_estimators": [100, 200, 300],
+                        "max_depth": [3, 4, 5],
+                        "learning_rate": [0.01, 0.1, 0.3],
                     }
-                    model = xgb.XGBRegressor(objective='reg:squarederror', random_state=42)
+                    model = xgb.XGBRegressor(objective="reg:squarederror", random_state=42)
                 else:
                     model = xgb.XGBRegressor(
                         n_estimators=200,
                         max_depth=4,
                         learning_rate=0.1,
-                        objective='reg:squarederror',
-                        random_state=42
+                        objective="reg:squarederror",
+                        random_state=42,
                     )
             elif model_type == "gradient_boosting":
                 if tune_hyperparams:
                     param_grid = {
-                        'n_estimators': [100, 200, 300],
-                        'max_depth': [3, 4, 5],
-                        'learning_rate': [0.01, 0.1, 0.3]
+                        "n_estimators": [100, 200, 300],
+                        "max_depth": [3, 4, 5],
+                        "learning_rate": [0.01, 0.1, 0.3],
                     }
                     model = GradientBoostingRegressor(random_state=42)
                 else:
                     model = GradientBoostingRegressor(
-                        n_estimators=200,
-                        max_depth=4,
-                        learning_rate=0.1,
-                        random_state=42
+                        n_estimators=200, max_depth=4, learning_rate=0.1, random_state=42
                     )
             else:  # random_forest
                 if tune_hyperparams:
                     param_grid = {
-                        'n_estimators': [100, 200, 300],
-                        'max_depth': [3, 4, 5],
-                        'min_samples_split': [2, 5, 10]
+                        "n_estimators": [100, 200, 300],
+                        "max_depth": [3, 4, 5],
+                        "min_samples_split": [2, 5, 10],
                     }
                     model = RandomForestRegressor(random_state=42)
                 else:
-                    model = RandomForestRegressor(
-                        n_estimators=200,
-                        max_depth=4,
-                        random_state=42
-                    )
+                    model = RandomForestRegressor(n_estimators=200, max_depth=4, random_state=42)
 
             # Perform hyperparameter tuning if requested
             if tune_hyperparams:
                 grid_search = GridSearchCV(
-                    model,
-                    param_grid,
-                    cv=5,
-                    scoring='neg_mean_squared_error',
-                    n_jobs=-1
+                    model, param_grid, cv=5, scoring="neg_mean_squared_error", n_jobs=-1
                 )
                 grid_search.fit(X_train, y_train)
                 model = grid_search.best_estimator_
@@ -261,22 +266,26 @@ class F1ModelTrainer:
         try:
             model_types = ["xgboost", "gradient_boosting", "random_forest"]
             best_model = None
-            best_score = float('inf')
+            best_score = float("inf")
 
             for model_type in model_types:
                 logger.info(f"Training {model_type} model...")
                 model = self.train_model(race_features, model_type, tune_hyperparams)
-                
+
                 if model is not None:
                     # Evaluate model
                     X = race_features[self.feature_columns]
-                    y = race_features[self.target_column] if self.target_column in race_features.columns else race_features['GridPosition']
+                    y = (
+                        race_features[self.target_column]
+                        if self.target_column in race_features.columns
+                        else race_features["GridPosition"]
+                    )
                     X_scaled = self.scaler.transform(X)
                     y_pred = model.predict(X_scaled)
                     score = mean_squared_error(y, y_pred)
-                    
+
                     logger.info(f"{model_type} model MSE: {score:.4f}")
-                    
+
                     if score < best_score:
                         best_score = score
                         best_model = model

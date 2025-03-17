@@ -9,7 +9,7 @@ import seaborn as sns
 import os
 
 # Create cache directory if it doesn't exist
-cache_dir = 'cache'
+cache_dir = "cache"
 if not os.path.exists(cache_dir):
     print(f"Creating cache directory: {cache_dir}")
     os.makedirs(cache_dir)
@@ -17,15 +17,16 @@ if not os.path.exists(cache_dir):
 # Enable caching for faster data loading
 fastf1.Cache.enable_cache(cache_dir)
 
+
 def load_race_data(year, gp_round, session_type):
     """
     Load race data from the FastF1 API
-    
+
     Args:
         year (int): F1 season year
         gp_round (int): Grand Prix round number
         session_type (str): Session type (e.g., "R" for race, "Q" for qualifying)
-        
+
     Returns:
         pandas.DataFrame: Processed lap data
     """
@@ -33,16 +34,17 @@ def load_race_data(year, gp_round, session_type):
         session = fastf1.get_session(year, gp_round, session_type)
         session.load()
         print(f"Successfully loaded {year} Round {gp_round} {session_type} data")
-        
+
         # Extract relevant lap data
         laps = session.laps[["Driver", "LapTime", "LapNumber", "Stint", "Compound"]].copy()
         laps.dropna(subset=["LapTime"], inplace=True)
         laps["LapTime (s)"] = laps["LapTime"].dt.total_seconds()
-        
+
         return laps
     except Exception as e:
         print(f"Error loading session data: {e}")
         return None
+
 
 # Load historical Australian GP race data (round 3)
 race_year = 2024
@@ -65,23 +67,24 @@ print(f"Loading qualifying data from {qualifying_times_csv}")
 
 try:
     if not os.path.exists(qualifying_times_csv):
-        raise FileNotFoundError(f"Required file {qualifying_times_csv} not found. Please run qual_data.py first to generate qualifying data.")
-    
+        raise FileNotFoundError(
+            f"Required file {qualifying_times_csv} not found. Please run qual_data.py first to generate qualifying data."
+        )
+
     qualifying_data = pd.read_csv(qualifying_times_csv)
-    
+
     # Rename columns to match expected format
-    qualifying_data = qualifying_data.rename(columns={
-        "FullName": "Driver",
-        "DriverCode": "DriverCode"
-    })
-    
+    qualifying_data = qualifying_data.rename(
+        columns={"FullName": "Driver", "DriverCode": "DriverCode"}
+    )
+
     # Check if data was loaded successfully
     if qualifying_data.empty:
         raise ValueError("Qualifying data is empty")
-        
+
     print(f"Successfully loaded qualifying data for {len(qualifying_data)} drivers")
     print(qualifying_data.head())
-    
+
 except Exception as e:
     print(f"Error loading qualifying data: {e}")
     print("Please run qual_data.py first to generate the qualifying_times.csv file")
@@ -100,8 +103,12 @@ available_drivers = driver_race_pace["Driver"].tolist()
 print(f"Drivers with historical race data: {available_drivers}")
 
 # Filter qualifying data to only include drivers with historical data
-qualifying_filtered = qualifying_data_valid[qualifying_data_valid["DriverCode"].isin(available_drivers)]
-print(f"\nFiltered out {len(qualifying_data_valid) - len(qualifying_filtered)} drivers without historical data")
+qualifying_filtered = qualifying_data_valid[
+    qualifying_data_valid["DriverCode"].isin(available_drivers)
+]
+print(
+    f"\nFiltered out {len(qualifying_data_valid) - len(qualifying_filtered)} drivers without historical data"
+)
 print(f"Remaining drivers for prediction: {len(qualifying_filtered)}")
 
 if len(qualifying_filtered) == 0:
@@ -109,7 +116,9 @@ if len(qualifying_filtered) == 0:
     exit(1)
 
 # Merge qualifying data with race pace data
-model_data = qualifying_filtered.merge(driver_race_pace, left_on="DriverCode", right_on="Driver", suffixes=('', '_RacePace'))
+model_data = qualifying_filtered.merge(
+    driver_race_pace, left_on="DriverCode", right_on="Driver", suffixes=("", "_RacePace")
+)
 
 # Verify data is properly merged
 print(f"Model data shape: {model_data.shape}")
@@ -139,14 +148,20 @@ predicted_lap_times = model.predict(qualifying_filtered_X)
 # Calculate total race time (number of laps for the Australian GP)
 NUM_LAPS = 58
 qualifying_filtered["PredictedLapTime (s)"] = predicted_lap_times
-qualifying_filtered["PredictedRaceTime (s)"] = qualifying_filtered["PredictedLapTime (s)"] * NUM_LAPS
+qualifying_filtered["PredictedRaceTime (s)"] = (
+    qualifying_filtered["PredictedLapTime (s)"] * NUM_LAPS
+)
 
 # Sort by predicted race time to get final standings
 final_standings = qualifying_filtered.sort_values(by="PredictedRaceTime (s)")
 
 # Display predicted race winner and standings
 print(f"\n=== Predicted {race_name} Race Results (Drivers with Historical Data) ===\n")
-print(final_standings[["Driver", "QualifyingTime (s)", "PredictedLapTime (s)", "PredictedRaceTime (s)"]].head(20))
+print(
+    final_standings[
+        ["Driver", "QualifyingTime (s)", "PredictedLapTime (s)", "PredictedRaceTime (s)"]
+    ].head(20)
+)
 
 # Calculate time deltas from winner
 winner_time = final_standings.iloc[0]["PredictedRaceTime (s)"]
@@ -160,7 +175,9 @@ for i, (_, driver) in enumerate(final_standings.iterrows(), 1):
     print(f"{i}. {driver['Driver']} ({driver['DriverCode']}) - {gap_str}")
 
 # Print excluded drivers due to lack of historical data
-excluded_due_to_history = qualifying_data_valid[~qualifying_data_valid["DriverCode"].isin(available_drivers)]
+excluded_due_to_history = qualifying_data_valid[
+    ~qualifying_data_valid["DriverCode"].isin(available_drivers)
+]
 if not excluded_due_to_history.empty:
     print("\n=== Excluded Drivers (No Historical Data Available) ===")
     for _, driver in excluded_due_to_history.iterrows():
@@ -175,18 +192,18 @@ if not excluded_due_to_qualifying.empty:
 
 # Visualize the results
 plt.figure(figsize=(12, 8))
-sns.barplot(x="Gap to Winner (s)", y="Driver", data=final_standings.iloc[:10], palette="viridis", hue="DriverCode")
-plt.title(f"Predicted Time Gaps to Winner - {race_name}\n(Only Drivers with Historical Data)", fontsize=16)
+sns.barplot(
+    x="Gap to Winner (s)",
+    y="Driver",
+    data=final_standings.iloc[:10],
+    palette="viridis",
+    hue="DriverCode",
+)
+plt.title(
+    f"Predicted Time Gaps to Winner - {race_name}\n(Only Drivers with Historical Data)", fontsize=16
+)
 plt.xlabel("Gap to Winner (seconds)", fontsize=12)
 plt.ylabel("Driver", fontsize=12)
 plt.tight_layout()
 plt.savefig("predicted_race_results.png")
 print("\nResults visualization saved as 'predicted_race_results.png'")
-
-
-    
-
-
-
-
-
