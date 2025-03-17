@@ -237,6 +237,30 @@ class F1DataProcessor:
             logger.error(f"Error processing qualifying data: {e}")
             return None
             
+    def _calculate_points(self, position):
+        """
+        Calculate points based on finishing position
+        
+        Args:
+            position: Finishing position (1-20)
+            
+        Returns:
+            int: Points awarded
+        """
+        points_system = {
+            1: 25,   # 1st place
+            2: 18,   # 2nd place
+            3: 15,   # 3rd place
+            4: 12,   # 4th place
+            5: 10,   # 5th place
+            6: 8,    # 6th place
+            7: 6,    # 7th place
+            8: 4,    # 8th place
+            9: 2,    # 9th place
+            10: 1    # 10th place
+        }
+        return points_system.get(position, 0)  # 0 points for positions 11-20
+
     def process_race_data(self, session):
         """
         Process race data from a session
@@ -272,14 +296,18 @@ class F1DataProcessor:
             race_data = []
             for _, result in race_results.iterrows():
                 driver_id = result["Abbreviation"]
+                position = result["Position"]
+                
+                # Calculate points based on position
+                points = self._calculate_points(position)
                 
                 race_data.append({
                     "DriverId": driver_id,
                     "FullName": result["FullName"],
                     "TeamName": result["TeamName"],
-                    "Position": result["Position"],
+                    "Position": position,
                     "Status": result["Status"],
-                    "Points": result["Points"],
+                    "Points": points,
                     "GridPosition": result["GridPos"],
                     "MedianLapTime": median_lap_times.get(driver_id),
                     "Finished": result["Status"] == "Finished",
@@ -311,23 +339,27 @@ class F1DataProcessor:
                 
             # Get circuit name for current race
             current_race = self.get_event_schedule(current_year, current_round)
-            if current_race.empty:
+            if current_race is None or (isinstance(current_race, pd.DataFrame) and current_race.empty):
                 logger.warning(f"No race found for year {current_year} and round {current_round}")
                 return {"race": pd.DataFrame(), "practice": pd.DataFrame()}
                 
-            # Get circuit name from available columns
+            # Get circuit name from available columns with better logging
             circuit_name = None
-            if 'Location' in current_race.columns:
-                circuit_name = current_race["Location"].iloc[0]
-            elif 'CircuitName' in current_race.columns:
-                circuit_name = current_race["CircuitName"].iloc[0]
-            elif 'Circuit' in current_race.columns:
-                circuit_name = current_race["Circuit"].iloc[0]
-            elif 'EventName' in current_race.columns:
-                circuit_name = current_race["EventName"].iloc[0]
-            else:
-                logger.warning("Could not find circuit name in schedule")
-                return {"race": pd.DataFrame(), "practice": pd.DataFrame()}
+            available_columns = current_race.columns.tolist() if isinstance(current_race, pd.DataFrame) else []
+            logger.debug(f"Available columns for circuit name: {available_columns}")
+            
+            # Try different column names in order of preference
+            column_priorities = ['CircuitName', 'Location', 'Circuit', 'EventName']
+            for col in column_priorities:
+                if col in available_columns:
+                    circuit_name = current_race[col].iloc[0]
+                    logger.info(f"Found circuit name '{circuit_name}' in column '{col}'")
+                    break
+                    
+            if circuit_name is None:
+                logger.warning(f"Could not find circuit name in available columns: {available_columns}")
+                circuit_name = f"Round {current_round} Circuit"
+                logger.info(f"Using default circuit name: {circuit_name}")
                 
             # Collect historical race data
             historical_data = {"race": pd.DataFrame(), "practice": pd.DataFrame()}
@@ -338,14 +370,16 @@ class F1DataProcessor:
                     # Find the race at this circuit
                     year_schedule = self.get_season_schedule(year)
                     if year_schedule is None or year_schedule.empty:
+                        logger.debug(f"No schedule found for year {year}")
                         continue
                         
                     # Try to match circuit name using different column names
                     circuit_race = None
-                    for col in ['Location', 'CircuitName', 'Circuit', 'EventName']:
+                    for col in column_priorities:
                         if col in year_schedule.columns:
-                            circuit_race = year_schedule[year_schedule[col] == circuit_name]
+                            circuit_race = year_schedule[year_schedule[col].str.contains(circuit_name, case=False, na=False)]
                             if not circuit_race.empty:
+                                logger.debug(f"Found matching race in {year} using column {col}")
                                 break
                                 
                     if circuit_race is None or circuit_race.empty:
@@ -353,6 +387,7 @@ class F1DataProcessor:
                         continue
                         
                     race_round = circuit_race["RoundNumber"].iloc[0]
+                    logger.info(f"Processing historical data for {year} Round {race_round}")
                     
                     # Load race data
                     race_data = self.load_session_data(year, race_round, "Race")
@@ -362,6 +397,7 @@ class F1DataProcessor:
                             race_results["Year"] = year
                             race_results["Round"] = race_round
                             historical_data["race"] = pd.concat([historical_data["race"], race_results])
+                            logger.debug(f"Added race data from {year}")
                             
                     # Load practice data if requested
                     if include_practice:
@@ -369,23 +405,31 @@ class F1DataProcessor:
                             practice_data = self.load_session_data(year, race_round, session)
                             if practice_data is not None:
                                 practice_results = self.process_lap_data(practice_data)
-                                if not practice_results.empty:
-                                    practice_results["Year"] = year
-                                    practice_results["Round"] = race_round
-                                    practice_results["Session"] = session
-                                    historical_data["practice"] = pd.concat([historical_data["practice"], practice_results])
+                                if practice_results is not None and "laps" in practice_results and not practice_results["laps"].empty:
+                                    practice_results["laps"]["Year"] = year
+                                    practice_results["laps"]["Round"] = race_round
+                                    practice_results["laps"]["Session"] = session
+                                    historical_data["practice"] = pd.concat([historical_data["practice"], practice_results["laps"]])
+                                    logger.debug(f"Added {session} data from {year}")
                                     
                 except Exception as e:
                     logger.warning(f"Error loading data for {year} {circuit_name}: {e}")
                     continue
                     
             # Sort by date if available
-            if not historical_data["race"].empty and "Date" in historical_data["race"].columns:
-                historical_data["race"] = historical_data["race"].sort_values("Date", ascending=False)
+            if not historical_data["race"].empty:
+                if "Date" in historical_data["race"].columns:
+                    historical_data["race"] = historical_data["race"].sort_values("Date", ascending=False)
+                else:
+                    historical_data["race"] = historical_data["race"].sort_values("Year", ascending=False)
                 
-            if not historical_data["practice"].empty and "Date" in historical_data["practice"].columns:
-                historical_data["practice"] = historical_data["practice"].sort_values("Date", ascending=False)
+            if not historical_data["practice"].empty:
+                if "Date" in historical_data["practice"].columns:
+                    historical_data["practice"] = historical_data["practice"].sort_values("Date", ascending=False)
+                else:
+                    historical_data["practice"] = historical_data["practice"].sort_values("Year", ascending=False)
                 
+            logger.info(f"Collected historical data: {len(historical_data['race'])} races, {len(historical_data['practice'])} practice sessions")
             return historical_data
             
         except Exception as e:

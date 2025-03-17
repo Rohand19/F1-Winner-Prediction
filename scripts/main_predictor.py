@@ -12,6 +12,9 @@ import argparse
 from datetime import datetime
 import matplotlib.pyplot as plt
 import seaborn as sns
+from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.model_selection import GridSearchCV, train_test_split
+from sklearn.metrics import mean_squared_error, r2_score
 
 # Import custom modules
 from src.data.data_processor import F1DataProcessor
@@ -38,12 +41,11 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description="F1 Race Prediction System")
     
     # Race information
-    parser.add_argument('--year', type=int, default=datetime.now().year,
+    parser.add_argument('--year', type=int, required=True,
                       help='Year of the race to predict')
-    parser.add_argument('--race', type=int, default=None,
-                      help='Race number to predict (default: next upcoming race)')
-    parser.add_argument('--event', type=str, default=None,
-                      help='Event name (optional, used instead of race number)')
+    parser.add_argument('--race', type=int, required=True,
+                      help='Race number to predict')
+    parser.add_argument('--event', type=str, help='Event name (optional)')
     
     # Data options
     parser.add_argument('--historical-races', type=int, default=5,
@@ -55,7 +57,7 @@ def parse_arguments():
     
     # Training options
     parser.add_argument('--model-type', type=str, default='gradient_boosting',
-                      choices=['xgboost', 'gradient_boosting', 'random_forest', 'ridge', 'lasso', 'svr'],
+                      choices=['gradient_boosting', 'random_forest', 'neural_network'],
                       help='Model type to use for predictions')
     parser.add_argument('--tune-hyperparams', action='store_true',
                       help='Tune model hyperparameters (slower)')
@@ -148,6 +150,263 @@ def get_current_race_info(args, data_processor):
         logger.error(f"Error getting race information: {e}")
         sys.exit(1)
 
+def train_model(X_train, y_train, model_type='gradient_boosting', tune_hyperparams=False):
+    """Train a model with optional hyperparameter tuning."""
+    if model_type == 'gradient_boosting':
+        if tune_hyperparams:
+            # Define parameter grid
+            param_grid = {
+                'n_estimators': [100, 200, 300],
+                'learning_rate': [0.01, 0.1, 0.2],
+                'max_depth': [3, 5, 7]
+            }
+            
+            # Create base model
+            base_model = GradientBoostingRegressor(random_state=42)
+            
+            # Perform grid search
+            grid_search = GridSearchCV(
+                estimator=base_model,
+                param_grid=param_grid,
+                cv=5,
+                scoring='neg_mean_squared_error',
+                n_jobs=-1
+            )
+            
+            # Fit grid search
+            grid_search.fit(X_train, y_train)
+            
+            # Get best model
+            best_params = grid_search.best_params_
+            model = GradientBoostingRegressor(**best_params, random_state=42)
+            model.fit(X_train, y_train)
+            
+            logger.info(f"Best parameters: {best_params}")
+        else:
+            # Use default parameters
+            model = GradientBoostingRegressor(random_state=42)
+            model.fit(X_train, y_train)
+    else:
+        raise ValueError(f"Unsupported model type: {model_type}")
+    
+    return model
+
+def evaluate_model(model, X_test, y_test):
+    """Evaluate model performance."""
+    y_pred = model.predict(X_test)
+    mse = mean_squared_error(y_test, y_pred)
+    r2 = r2_score(y_test, y_pred)
+    
+    logger.info(f"Model performance - MSE: {mse:.4f}, R2: {r2:.4f}")
+    
+    return mse, r2
+
+def prepare_data_for_prediction(qualifying_data, historical_data=None):
+    """Prepare data for prediction by adding necessary features."""
+    # Create a copy to avoid modifying the original
+    prediction_data = qualifying_data.copy()
+    
+    # Ensure we have the required columns
+    if 'Driver' not in prediction_data.columns and 'FullName' in prediction_data.columns:
+        prediction_data['Driver'] = prediction_data['FullName']
+    
+    if 'Team' not in prediction_data.columns and 'TeamName' in prediction_data.columns:
+        prediction_data['Team'] = prediction_data['TeamName']
+    
+    # Ensure DriverId is properly formatted
+    if 'DriverId' not in prediction_data.columns and 'Driver' in prediction_data.columns:
+        prediction_data['DriverId'] = prediction_data.index
+    
+    # Ensure Grid_Position is properly formatted
+    if 'Grid_Position' not in prediction_data.columns and 'Position' in prediction_data.columns:
+        prediction_data['Grid_Position'] = pd.to_numeric(prediction_data['Position'], errors='coerce')
+    
+    # Add historical performance features with more realistic values
+    prediction_data['Last_Race_Position'] = 10  # Default middle of the field
+    prediction_data['Last_Race_Points'] = 0
+    prediction_data['Season_Points'] = 0
+    prediction_data['Season_Position'] = 10
+    prediction_data['Recent_Form'] = 0.5  # Normalized 0-1 scale
+    prediction_data['Points_Form'] = 0
+    
+    # 2024 driver form factors (higher is better)
+    driver_form = {
+        'Max Verstappen': 0.95,      # Dominant early season form
+        'Sergio Perez': 0.85,        # Strong but not at Max's level
+        'Charles Leclerc': 0.90,     # Very strong early season
+        'Carlos Sainz': 0.88,        # Race winner, consistent
+        'Lewis Hamilton': 0.82,      # Struggling with car
+        'George Russell': 0.85,      # Better adapting to 2024 car
+        'Lando Norris': 0.88,        # Very competitive
+        'Oscar Piastri': 0.84,       # Strong sophomore season
+        'Fernando Alonso': 0.86,     # Consistent performer
+        'Lance Stroll': 0.77,        # Inconsistent performances
+        'Pierre Gasly': 0.78,        # Struggling with Alpine
+        'Esteban Ocon': 0.76,        # Struggling with Alpine
+        'Alexander Albon': 0.82,     # Performing well in Williams
+        'Logan Sargeant': 0.72,      # Struggling in comparison
+        'Yuki Tsunoda': 0.81,        # Strong start to 2024
+        'Daniel Ricciardo': 0.78,    # Variable form
+        'Nico Hulkenberg': 0.81,     # Solid performances
+        'Kevin Magnussen': 0.78,     # Inconsistent
+        'Valtteri Bottas': 0.76,     # Struggling with Sauber
+        'Guanyu Zhou': 0.74          # Struggling with Sauber
+    }
+    
+    # Update driver form based on known data
+    for idx, row in prediction_data.iterrows():
+        driver = row['Driver'] if 'Driver' in row else 'Unknown'
+        if driver in driver_form:
+            prediction_data.at[idx, 'Recent_Form'] = driver_form[driver]
+    
+    # Add track-specific features
+    prediction_data['Track_Experience'] = 2  # Default some experience
+    prediction_data['Track_Best_Position'] = 10
+    prediction_data['Track_Average_Position'] = 10
+    prediction_data['Track_Type'] = 'permanent'  # Default track type
+    prediction_data['Track_Length'] = 5.0  # Default track length in km
+    prediction_data['Track_Corners'] = 15  # Default number of corners
+    
+    # Add reliability features - 2024 data
+    team_reliability = {
+        'Red Bull Racing': 0.92,  # Very reliable
+        'Ferrari': 0.89,         # Generally reliable 
+        'Mercedes': 0.91,        # Very reliable
+        'McLaren': 0.88,         # Good reliability
+        'Aston Martin': 0.87,    # Good reliability
+        'Alpine': 0.84,          # Some issues early season
+        'Williams': 0.85,        # Mixed reliability
+        'RB': 0.86,              # Good reliability
+        'Kick Sauber': 0.82,     # Some issues
+        'Haas F1 Team': 0.86     # Improved reliability
+    }
+    
+    # Add reliability rates based on team
+    for idx, row in prediction_data.iterrows():
+        team = row['Team'] if 'Team' in row else 'Unknown'
+        # Use default 0.85 if team not found in the dictionary
+        team_dnf_rate = 1.0 - team_reliability.get(team, 0.85)
+        prediction_data.at[idx, 'Driver_DNF_Rate'] = team_dnf_rate + np.random.uniform(-0.02, 0.02)  # Small per-driver variation
+        prediction_data.at[idx, 'Team_DNF_Rate'] = team_dnf_rate
+    
+    # Add driver consistency features
+    prediction_data['Qualifying_Consistency'] = 0.5  # Default middle value
+    prediction_data['Race_Consistency'] = 0.5
+    
+    # 2024 car performance data (0-1 scale, higher is better)
+    team_performance_2024 = {
+        'Red Bull Racing': {'straight': 0.95, 'corner': 0.93, 'overall': 0.95},
+        'Ferrari': {'straight': 0.93, 'corner': 0.92, 'overall': 0.92},
+        'Mercedes': {'straight': 0.89, 'corner': 0.90, 'overall': 0.89},
+        'McLaren': {'straight': 0.92, 'corner': 0.94, 'overall': 0.93},
+        'Aston Martin': {'straight': 0.87, 'corner': 0.88, 'overall': 0.87},
+        'Alpine': {'straight': 0.82, 'corner': 0.81, 'overall': 0.81},
+        'Williams': {'straight': 0.86, 'corner': 0.78, 'overall': 0.82},
+        'RB': {'straight': 0.85, 'corner': 0.84, 'overall': 0.84},
+        'Kick Sauber': {'straight': 0.78, 'corner': 0.76, 'overall': 0.77},
+        'Haas F1 Team': {'straight': 0.82, 'corner': 0.80, 'overall': 0.81},
+        # Aliases
+        'Red Bull': {'straight': 0.95, 'corner': 0.93, 'overall': 0.95},
+        'Haas': {'straight': 0.82, 'corner': 0.80, 'overall': 0.81},
+        'Sauber': {'straight': 0.78, 'corner': 0.76, 'overall': 0.77}
+    }
+    
+    # Add car performance metrics based on team
+    for idx, row in prediction_data.iterrows():
+        team = row['Team'] if 'Team' in row else 'Unknown'
+        if team in team_performance_2024:
+            prediction_data.at[idx, 'Team_Straight_Speed'] = team_performance_2024[team]['straight']
+            prediction_data.at[idx, 'Team_Corner_Speed'] = team_performance_2024[team]['corner']
+            prediction_data.at[idx, 'Car_Performance'] = team_performance_2024[team]['overall']
+        else:
+            # Default values if team not found
+            prediction_data.at[idx, 'Team_Straight_Speed'] = 0.8
+            prediction_data.at[idx, 'Team_Corner_Speed'] = 0.8
+            prediction_data.at[idx, 'Car_Performance'] = 0.8
+    
+    # Add weather data with default values (for now)
+    prediction_data['Track_Temperature'] = 35.0  # Bahrain is typically hot
+    prediction_data['Air_Temperature'] = 25.0
+    prediction_data['Humidity'] = 60.0
+    
+    # Grid Position Factor - Importance of starting position varies by track
+    # Initialize a grid position importance factor - higher means starting position matters more
+    prediction_data['Grid_Importance'] = 0.85  # High importance for Bahrain
+    
+    # Calculate Grid Advantage based on position with diminishing returns
+    # Front row has biggest advantage, then diminishing returns
+    for idx, row in prediction_data.iterrows():
+        grid_pos = row['Grid_Position'] if 'Grid_Position' in row else 10
+        # Exponential decay of advantage
+        grid_advantage = min(1.0, np.exp(-0.15 * (grid_pos - 1)))
+        prediction_data.at[idx, 'Grid_Advantage'] = grid_advantage
+    
+    # Add qualifying time features if available
+    if 'Q1' in prediction_data.columns:
+        # Convert timedelta to seconds if needed
+        if pd.api.types.is_timedelta64_dtype(prediction_data['Q1']):
+            prediction_data['Q1_Time'] = prediction_data['Q1'].dt.total_seconds()
+        else:
+            # Try to convert string to timedelta
+            try:
+                prediction_data['Q1_Time'] = pd.to_timedelta(prediction_data['Q1']).dt.total_seconds()
+            except:
+                prediction_data['Q1_Time'] = 90.0  # Default Q1 time
+    else:
+        prediction_data['Q1_Time'] = 90.0  # Default Q1 time
+    
+    if 'Q2' in prediction_data.columns:
+        if pd.api.types.is_timedelta64_dtype(prediction_data['Q2']):
+            prediction_data['Q2_Time'] = prediction_data['Q2'].dt.total_seconds()
+        else:
+            try:
+                prediction_data['Q2_Time'] = pd.to_timedelta(prediction_data['Q2']).dt.total_seconds()
+            except:
+                prediction_data['Q2_Time'] = 89.0  # Default Q2 time
+    else:
+        prediction_data['Q2_Time'] = 89.0  # Default Q2 time
+    
+    if 'Q3' in prediction_data.columns:
+        if pd.api.types.is_timedelta64_dtype(prediction_data['Q3']):
+            prediction_data['Q3_Time'] = prediction_data['Q3'].dt.total_seconds()
+        else:
+            try:
+                prediction_data['Q3_Time'] = pd.to_timedelta(prediction_data['Q3']).dt.total_seconds()
+            except:
+                prediction_data['Q3_Time'] = 88.0  # Default Q3 time
+    else:
+        prediction_data['Q3_Time'] = 88.0  # Default Q3 time
+    
+    # Add special feature for tracks where overtaking is difficult
+    prediction_data['Overtaking_Difficulty'] = 0.6  # Medium difficulty in Bahrain
+    
+    # Calculate qualifying improvements
+    prediction_data['Q2_Improvement'] = prediction_data['Q1_Time'] - prediction_data['Q2_Time']
+    prediction_data['Q3_Improvement'] = prediction_data['Q2_Time'] - prediction_data['Q3_Time']
+    prediction_data['Q3_Gap'] = prediction_data['Q3_Time'] - prediction_data['Q3_Time'].min()
+    
+    # Convert categorical variables to numeric using one-hot encoding
+    categorical_columns = ['Track_Type']
+    prediction_data = pd.get_dummies(prediction_data, columns=categorical_columns, prefix=categorical_columns)
+    
+    # Fill NaN values
+    numeric_columns = prediction_data.select_dtypes(include=['number']).columns
+    for col in numeric_columns:
+        prediction_data[col] = prediction_data[col].fillna(prediction_data[col].mean())
+    
+    prediction_data = prediction_data.fillna(0)  # Fill any remaining NaNs with 0
+    
+    # Ensure all columns are numeric
+    for col in prediction_data.columns:
+        if not pd.api.types.is_numeric_dtype(prediction_data[col]):
+            try:
+                prediction_data[col] = pd.to_numeric(prediction_data[col], errors='coerce')
+            except:
+                # If conversion fails, drop the column
+                prediction_data = prediction_data.drop(columns=[col])
+    
+    return prediction_data
+
 def main():
     """
     Main prediction pipeline
@@ -157,6 +416,9 @@ def main():
     
     # Setup required directories
     setup_directories(args)
+    
+    # Generate timestamp for unique filenames
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
     logger.info("Starting F1 Race Prediction System")
     logger.info(f"Arguments: {args}")
@@ -169,6 +431,10 @@ def main():
         
         # Get race information
         year, race_round, event_name = get_current_race_info(args, data_processor)
+        
+        # Create unique output directory for this run
+        run_output_dir = os.path.join(args.output_dir, f'run_{timestamp}')
+        os.makedirs(run_output_dir, exist_ok=True)
         
         # Load qualifying data for current race
         qualifying_data = data_processor.load_qualifying_data(year, race_round)
@@ -196,6 +462,58 @@ def main():
             
         logger.info(f"Loaded qualifying data for {len(qualifying_data)} drivers")
         
+        # Process qualifying data to extract driver and team information
+        logger.info("Processing qualifying data...")
+        
+        # Create a simplified qualifying data for race prediction
+        simplified_qualifying = pd.DataFrame()
+        
+        # Add Driver field based on available data
+        if 'BroadcastName' in qualifying_data.columns:
+            simplified_qualifying['Driver'] = qualifying_data['BroadcastName']
+        elif 'Abbreviation' in qualifying_data.columns:
+            simplified_qualifying['Driver'] = qualifying_data['Abbreviation']
+        elif 'FullName' in qualifying_data.columns:
+            simplified_qualifying['Driver'] = qualifying_data['FullName']
+        else:
+            simplified_qualifying['Driver'] = ["Driver " + str(i+1) for i in range(len(qualifying_data))]
+        
+        # Add Team field based on available data
+        if 'TeamName' in qualifying_data.columns:
+            simplified_qualifying['Team'] = qualifying_data['TeamName']
+        else:
+            simplified_qualifying['Team'] = ["Team " + str(i+1) for i in range(len(qualifying_data))]
+        
+        # Add DriverId if available
+        if 'DriverId' in qualifying_data.columns:
+            simplified_qualifying['DriverId'] = qualifying_data['DriverId']
+        elif 'Abbreviation' in qualifying_data.columns:
+            simplified_qualifying['DriverId'] = qualifying_data['Abbreviation']
+        else:
+            simplified_qualifying['DriverId'] = simplified_qualifying.index
+        
+        # Add Grid Position
+        if 'Position' in qualifying_data.columns:
+            simplified_qualifying['Grid_Position'] = pd.to_numeric(qualifying_data['Position'], errors='coerce')
+        else:
+            simplified_qualifying['Grid_Position'] = range(1, len(qualifying_data) + 1)
+        
+        # Add timing information
+        if 'Q1' in qualifying_data.columns:
+            simplified_qualifying['Q1_Time'] = qualifying_data['Q1']
+        if 'Q2' in qualifying_data.columns:
+            simplified_qualifying['Q2_Time'] = qualifying_data['Q2']
+        if 'Q3' in qualifying_data.columns:
+            simplified_qualifying['Q3_Time'] = qualifying_data['Q3']
+        
+        # Log drivers and teams for debugging
+        logger.info("Drivers in simplified qualifying data:")
+        for idx, row in simplified_qualifying.iterrows():
+            driver = row.get('Driver', 'Unknown')
+            team = row.get('Team', 'Unknown')
+            pos = row.get('Grid_Position', 'Unknown')
+            logger.info(f"  {pos}: {driver} ({team})")
+        
         # Collect historical race data for feature engineering
         historical_data = data_processor.collect_historical_race_data(
             current_year=year,
@@ -217,261 +535,121 @@ def main():
             logger.warning("Could not retrieve track information")
         else:
             logger.info(f"Track: {track_info.get('Name', 'Unknown')} ({track_info.get('Length', 'Unknown')}km)")
-            
+        
+        # Prepare data for prediction
+        prediction_data = prepare_data_for_prediction(simplified_qualifying, historical_data)
+        
         # Initialize feature engineer
         feature_engineer = F1FeatureEngineer()
         
         # Generate features for prediction
-        race_features = feature_engineer.engineer_features(
-            qualifying_results=qualifying_data,
+        features = feature_engineer.engineer_features(
+            qualifying_results=prediction_data,
             historical_data=historical_data,
             track_info=track_info
         )
         
-        if race_features is None or race_features.empty:
+        if features is None or features.empty:
             logger.error("Failed to engineer features for prediction")
             sys.exit(1)
             
-        logger.info(f"Generated features for {len(race_features)} drivers")
+        logger.info(f"Generated features for {len(features)} drivers")
         
-        # Initialize race predictor (get number of laps from track info)
-        total_laps = track_info.get('Laps', 58) if track_info else 58
-        race_predictor = RacePredictor(total_laps=total_laps)
+        # Make sure features contain only numeric data
+        numeric_features = features.select_dtypes(include=['number'])
+        if numeric_features.shape[1] < features.shape[1]:
+            logger.warning(f"Dropping {features.shape[1] - numeric_features.shape[1]} non-numeric columns")
+            features = numeric_features
         
-        if args.compare_models:
-            # Compare different model types
-            logger.info("Comparing different model types...")
-            
-            # Initialize model trainer
-            model_trainer = F1ModelTrainer(models_dir='models')
-            
-            # Compare models
-            comparison_results = model_trainer.compare_models(
-                race_features,
-                tune_hyperparams=args.tune_hyperparams
-            )
-            
-            if comparison_results is None:
-                logger.error("Model comparison failed")
-                # Fallback to direct prediction
-                logger.info("Falling back to direct prediction without ML model")
-                race_results = race_predictor.predict_and_visualize(
-                    race_features,
-                    title=f"{event_name} {year} Prediction",
-                    output_file=os.path.join(args.output_dir, f"prediction_{year}_round{race_round}.png")
-                )
-            else:
-                logger.info(f"Best model: {comparison_results['best_model']}")
-                
-                # Use the best model for prediction
-                best_model_type = comparison_results['best_model']
-                best_model = comparison_results['models'][best_model_type]
-                
-                # Plot feature importance
-                model_trainer.plot_feature_importance(
-                    output_file=os.path.join(args.output_dir, f"feature_importance_{year}_round{race_round}.png")
-                )
-                
-                # Make predictions
-                positions = model_trainer.predict_with_model(best_model, race_features)
-                
-                if positions is None:
-                    logger.error("Failed to make predictions with best model")
-                    # Fallback to direct prediction
-                    logger.info("Falling back to direct prediction without ML model")
-                    race_results = race_predictor.predict_and_visualize(
-                        race_features,
-                        title=f"{event_name} {year} Prediction",
-                        output_file=os.path.join(args.output_dir, f"prediction_{year}_round{race_round}.png")
-                    )
-                else:
-                    # Update the projected positions
-                    for i, (idx, _) in enumerate(race_features.iterrows()):
-                        race_features.loc[idx, "ProjectedPosition"] = positions[i]
-                    
-                    # Get final race prediction
-                    race_results = race_predictor.predict_and_visualize(
-                        race_features,
-                        title=f"{event_name} {year} Prediction (Model: {best_model_type})",
-                        output_file=os.path.join(args.output_dir, f"prediction_{year}_round{race_round}.png")
-                    )
-        else:
-            # Use selected model type
-            if args.model_type != 'xgboost':
-                logger.info(f"Training {args.model_type} model...")
-                
-                # Initialize model trainer
-                model_trainer = F1ModelTrainer(models_dir='models')
-                
-                # Train model
-                model = model_trainer.train_position_model(
-                    race_features,
-                    model_type=args.model_type,
-                    tune_hyperparams=args.tune_hyperparams
-                )
-                
-                if model is not None:
-                    # Plot feature importance
-                    model_trainer.plot_feature_importance(
-                        output_file=os.path.join(args.output_dir, f"feature_importance_{year}_round{race_round}.png")
-                    )
-                    
-                    # Make predictions
-                    positions = model_trainer.predict_with_model(model, race_features)
-                    
-                    # Update the projected positions
-                    for i, (idx, _) in enumerate(race_features.iterrows()):
-                        race_features.loc[idx, "ProjectedPosition"] = positions[i]
-                
-            # Get final race prediction
-            race_results = race_predictor.predict_and_visualize(
-                race_features,
-                title=f"{event_name} {year} Prediction",
-                output_file=os.path.join(args.output_dir, f"prediction_{year}_round{race_round}.png")
-            )
+        # Check for NaN values
+        if features.isna().any().any():
+            logger.warning("Found NaN values in features, filling with column means")
+            features = features.fillna(features.mean())
         
-        # Print race results
-        if race_results is not None:
-            # The race_results should already be formatted from predict_and_visualize
-            print_race_results(race_results)
+        # Double check all NaN values are removed
+        if features.isna().any().any():
+            logger.warning("Still found NaN values after filling with means, filling with zeros")
+            features = features.fillna(0)
+        
+        # Split data for training (using historical data)
+        X = features
+        y = prediction_data['Grid_Position']  # Use grid position as a proxy for race position
+        
+        # Check for NaN values in target
+        if y.isna().any():
+            logger.warning("Found NaN values in target variable, filling with median")
+            y = y.fillna(y.median())
+        
+        # Debug info
+        logger.info(f"Feature matrix shape: {X.shape}")
+        logger.info(f"Target variable length: {len(y)}")
+        
+        # Train model
+        logger.info(f"Training {args.model_type} model...")
+        model = train_model(X, y, model_type=args.model_type, tune_hyperparams=args.tune_hyperparams)
+        
+        # Evaluate model
+        evaluate_model(model, X, y)
+        
+        # Create race predictor
+        race_predictor = RacePredictor(model=model, feature_columns=features.columns.tolist())
+        
+        # Make predictions with the simplified qualifying data
+        race_results = race_predictor.predict_finishing_positions(simplified_qualifying)
+        
+        # Print results
+        print_race_results(race_results)
+        
+        # Save results to CSV
+        results_file = os.path.join(run_output_dir, f'race_results_{timestamp}.csv')
+        race_results.to_csv(results_file, index=False)
+        logger.info(f"Saved race results to {results_file}")
+        
+        if args.visualize:
+            # Create grid vs finish position plot
+            plt.figure(figsize=(12, 6))
+            plt.scatter(race_results['GridPosition'], race_results['Position'])
+            plt.plot([1, 20], [1, 20], 'r--')  # Diagonal line for reference
+            plt.xlabel('Grid Position')
+            plt.ylabel('Finish Position')
+            plt.title('Grid vs Finish Position')
+            plt.grid(True)
             
-            # Save results to CSV
-            results_file = os.path.join(args.output_dir, f"race_results_{year}_round{race_round}.csv")
-            race_results.to_csv(results_file, index=False)
-            logger.info(f"Saved race results to {results_file}")
+            # Add driver labels
+            for _, row in race_results.iterrows():
+                plt.annotate(row['Driver'] if not pd.isna(row['Driver']) else 'Unknown', 
+                           (row['GridPosition'], row['Position']),
+                           xytext=(5, 5), textcoords='offset points')
             
-            if args.visualize:
-                # Create additional visualizations
-                
-                # 1. Starting grid vs. finishing positions
-                plt.figure(figsize=(12, 8))
-                grid = race_results[['FullName', 'GridPosition', 'Position']].copy()
-
-                # Filter out DNFs - handle both boolean DNF column and string 'DNF' in Position
-                if 'DNF' in grid.columns:
-                    # If DNF is a boolean column
-                    grid = grid[~grid['DNF']]
-                elif 'FinishStatus' in race_results.columns:
-                    # If we have a FinishStatus column
-                    dnf_indices = race_results[race_results['FinishStatus'].str.contains('DNF', na=False)].index
-                    grid = grid.drop(dnf_indices)
-                else:
-                    # Fallback: filter out rows where Position might be 'DNF' or non-numeric
-                    grid = grid[grid['Position'].apply(lambda x: isinstance(x, (int, float)) or (isinstance(x, str) and x.isdigit()))]
-                    grid['Position'] = pd.to_numeric(grid['Position'], errors='coerce')
-                    grid = grid.dropna(subset=['Position'])
-
-                # Convert to numeric types
-                grid['Position'] = pd.to_numeric(grid['Position'], errors='coerce')
-                grid['GridPosition'] = pd.to_numeric(grid['GridPosition'], errors='coerce')
-                grid = grid.dropna()  # Remove any rows with NaN values after conversion
-
-                # Create empty heatmap matrix
-                if not grid.empty and len(grid) > 1:  # Ensure we have at least 2 drivers
-                    max_pos = int(max(grid['GridPosition'].max(), grid['Position'].max()))
-                    heatmap = np.zeros((max_pos, max_pos))
-                    
-                    # Fill heatmap matrix
-                    for _, row in grid.iterrows():
-                        start = int(row['GridPosition']) - 1
-                        finish = int(row['Position']) - 1
-                        heatmap[finish, start] += 1
-                    
-                    # Create heatmap visualization
-                    plt.figure(figsize=(14, 10))
-                    sns.heatmap(heatmap, 
-                                annot=True, 
-                                fmt='g',
-                                cmap='YlOrRd',
-                                xticklabels=range(1, max_pos + 1),
-                                yticklabels=range(1, max_pos + 1))
-                    plt.title(f'{event_name} {year} - Starting Grid vs. Finishing Positions', fontsize=16)
-                    plt.xlabel('Grid Position', fontsize=12)
-                    plt.ylabel('Finishing Position', fontsize=12)
-                    plt.tight_layout()
-                    
-                    grid_plot_file = os.path.join(args.output_dir, f"grid_vs_finish_{year}_round{race_round}.png")
-                    plt.savefig(grid_plot_file, dpi=300, bbox_inches='tight')
-                    logger.info(f"Saved grid vs. finish plot to {grid_plot_file}")
-                else:
-                    logger.warning("Not enough data to create grid vs. finish visualization")
-                
-                # 2. Team performance
-                plt.figure(figsize=(14, 10))
-                try:
-                    # Ensure required columns exist
-                    if all(col in race_results.columns for col in ['TeamName', 'Points', 'DriverId']):
-                        team_results = race_results.groupby('TeamName').agg({
-                            'Points': 'sum',
-                            'DriverId': 'count'
-                        }).reset_index()
-                        team_results = team_results.rename(columns={'DriverId': 'DriversFinished'})
-                        team_results = team_results.sort_values('Points', ascending=False)
-                        
-                        if not team_results.empty:
-                            # Use team colors if available
-                            team_colors = {
-                                'Red Bull Racing': '#0600EF',
-                                'Mercedes': '#00D2BE',
-                                'Ferrari': '#DC0000',
-                                'McLaren': '#FF8700',
-                                'Aston Martin': '#006F62',
-                                'Alpine F1 Team': '#0090FF',
-                                'Williams': '#005AFF',
-                                'Visa Cash App RB': '#2B4562',  # Racing Bulls
-                                'Stake F1 Team': '#900000',
-                                'Haas F1 Team': '#FFFFFF',
-                                'Visa Cash App Racing Bulls F1 Team': '#2B4562',  # Main team name
-                                'Racing Bulls': '#2B4562',  # Legacy alias
-                                'Alpine': '#0090FF',  # Alias
-                                'Sauber': '#900000',  # Alias for Stake F1 Team
-                                'Haas': '#FFFFFF'  # Alias
-                            }
-                            
-                            # Create a color palette for the teams in the results
-                            palette = {team: team_colors.get(team, '#CCCCCC') for team in team_results['TeamName']}
-                            
-                            # Create the bar plot - fix the warning by using hue instead of directly passing palette
-                            ax = sns.barplot(
-                                x='Points', 
-                                y='TeamName', 
-                                hue='TeamName',  # Use TeamName as hue parameter
-                                data=team_results, 
-                                palette=palette,
-                                legend=False  # Hide the legend since it's redundant
-                            )
-                            plt.title(f'{event_name} {year} - Team Performance', fontsize=16)
-                            plt.xlabel('Points', fontsize=12)
-                            plt.ylabel('Team', fontsize=12)
-                            
-                            # Add points and drivers finishing
-                            for i, row in enumerate(team_results.itertuples()):
-                                plt.text(
-                                    row.Points + 0.5, i, 
-                                    f"{row.Points} pts ({row.DriversFinished} driver{'s' if row.DriversFinished > 1 else ''})",
-                                    va='center'
-                                )
-                            
-                            plt.tight_layout()
-                            
-                            team_plot_file = os.path.join(args.output_dir, f"team_performance_{year}_round{race_round}.png")
-                            plt.savefig(team_plot_file, dpi=300, bbox_inches='tight')
-                            logger.info(f"Saved team performance plot to {team_plot_file}")
-                        else:
-                            logger.warning("No team data available for visualization")
-                    else:
-                        logger.warning("Missing required columns for team performance visualization")
-                except Exception as e:
-                    logger.error(f"Error creating team performance visualization: {e}")
-                    plt.close()  # Close the figure to avoid display issues
-        else:
-            logger.error("Failed to generate race predictions")
+            grid_finish_file = os.path.join(run_output_dir, f'grid_vs_finish_{timestamp}.png')
+            plt.savefig(grid_finish_file)
+            plt.close()
+            logger.info(f"Saved grid vs. finish plot to {grid_finish_file}")
             
+            # Create team performance visualization
+            team_results = race_results.groupby('Team').agg({
+                'Points': 'sum',
+                'Position': 'mean'
+            }).sort_values('Points', ascending=False)
+            
+            plt.figure(figsize=(12, 6))
+            sns.barplot(x=team_results.index, y='Points', data=team_results)
+            plt.xticks(rotation=45, ha='right')
+            plt.title('Team Performance')
+            plt.tight_layout()
+            
+            team_perf_file = os.path.join(run_output_dir, f'team_performance_{timestamp}.png')
+            plt.savefig(team_perf_file)
+            plt.close()
+            logger.info(f"Saved team performance plot to {team_perf_file}")
+        
+        logger.info("F1 Race Prediction completed successfully")
+        
     except Exception as e:
-        logger.exception(f"An error occurred: {e}")
+        logger.error(f"Error in prediction pipeline: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         sys.exit(1)
-        
-    logger.info("F1 Race Prediction completed successfully")
 
 if __name__ == "__main__":
     main() 

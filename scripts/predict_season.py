@@ -19,8 +19,15 @@ def run_race_prediction(year, race):
         cmd = f"python3.11 scripts/main_predictor.py --year {year} --race {race} --tune-hyperparams"
         subprocess.run(cmd, shell=True, check=True)
         
-        # Read the results
-        results_file = f"results/race_results_{year}_round{race}.csv"
+        # Find the most recent results directory
+        results_dirs = [d for d in os.listdir("results") if d.startswith("run_")]
+        if not results_dirs:
+            logger.error(f"No results directory found for race {race}")
+            return None
+            
+        latest_dir = max(results_dirs, key=lambda x: os.path.getctime(os.path.join("results", x)))
+        results_file = f"results/{latest_dir}/race_results_{latest_dir}.csv"
+        
         if os.path.exists(results_file):
             return pd.read_csv(results_file)
         else:
@@ -43,26 +50,34 @@ def calculate_championship_standings(all_results):
             continue
             
         # Add race points to driver standings
-        race_points = results[['DriverId', 'FullName', 'TeamName', 'Points']].copy()
+        race_points = results[['DriverId', 'Driver', 'Team', 'Points']].copy()
         
         if driver_standings.empty:
             driver_standings = race_points.rename(columns={'Points': f'Race{race_num}'})
         else:
+            # Merge with existing standings
             driver_standings = driver_standings.merge(
                 race_points[['DriverId', 'Points']].rename(columns={'Points': f'Race{race_num}'}),
                 on='DriverId',
                 how='outer'
             )
             
+            # Update driver and team info if missing
+            missing_info = driver_standings['Driver'].isna()
+            if missing_info.any():
+                driver_info = race_points[['DriverId', 'Driver', 'Team']]
+                driver_standings.loc[missing_info, ['Driver', 'Team']] = \
+                    driver_standings[missing_info].merge(driver_info, on='DriverId', how='left')[['Driver', 'Team']]
+            
         # Calculate constructor points
-        team_points = results.groupby('TeamName')['Points'].sum().reset_index()
+        team_points = results.groupby('Team')['Points'].sum().reset_index()
         
         if constructor_standings.empty:
             constructor_standings = team_points.rename(columns={'Points': f'Race{race_num}'})
         else:
             constructor_standings = constructor_standings.merge(
                 team_points.rename(columns={'Points': f'Race{race_num}'}),
-                on='TeamName',
+                on='Team',
                 how='outer'
             )
     
@@ -87,7 +102,7 @@ def format_standings(standings, title):
     """Format standings for display"""
     print(f"\n=== {title} ===\n")
     
-    if 'FullName' in standings.columns:
+    if 'Driver' in standings.columns:
         # Driver standings
         print(f"{'POS':<4}{'DRIVER':<20}{'TEAM':<25}{'POINTS':<8}")
     else:
@@ -97,10 +112,10 @@ def format_standings(standings, title):
     print("-" * 45)
     
     for i, (_, row) in enumerate(standings.iterrows(), 1):
-        if 'FullName' in standings.columns:
-            print(f"{i:<4}{row['FullName']:<20}{row['TeamName']:<25}{int(row['TotalPoints']):<8}")
+        if 'Driver' in standings.columns:
+            print(f"{i:<4}{row['Driver']:<20}{row['Team']:<25}{int(row['TotalPoints']):<8}")
         else:
-            print(f"{i:<4}{row['TeamName']:<25}{int(row['TotalPoints']):<8}")
+            print(f"{i:<4}{row['Team']:<25}{int(row['TotalPoints']):<8}")
 
 def main():
     """Main function to predict entire season and calculate championships"""

@@ -30,15 +30,10 @@ class F1ModelTrainer:
         self.feature_importance = {}
         self.model = None
         self.feature_columns = [
-            'RacePaceScore',
-            'TeamStrength',
-            'AvgFinishPosition',
-            'DNFRate',
-            'RecentAvgPosition',
-            'AvgQualifyingPosition',
-            'TrackTypeScore',
-            'RainPerformance',
-            'PositionImprovement'
+            'Position',
+            'QualifyingPerformance',
+            'DNFProbability',
+            'RacePaceScore'
         ]
         self.target_column = 'ProjectedPosition'
         self.scaler = StandardScaler()
@@ -141,7 +136,7 @@ class F1ModelTrainer:
             logger.debug("Exception details:", exc_info=True)
             return None, None, None
 
-    def train_model(self, race_features: pd.DataFrame, model_type: str = "xgboost", tune_hyperparams: bool = False):
+    def train_model(self, race_features: pd.DataFrame, model_type: str = "xgboost", tune_hyperparams: bool = False, target_column: str = "ProjectedPosition"):
         """
         Train a model using the provided race features.
 
@@ -149,6 +144,7 @@ class F1ModelTrainer:
             race_features: DataFrame or dictionary containing race features
             model_type: Type of model to train ("xgboost", "gradient_boosting", "random_forest")
             tune_hyperparams: Whether to perform hyperparameter tuning
+            target_column: Target column for prediction (default: "ProjectedPosition")
 
         Returns:
             Trained model
@@ -165,7 +161,10 @@ class F1ModelTrainer:
 
             # Prepare features and target
             X = race_features[self.feature_columns]
-            y = race_features[self.target_column] if self.target_column in race_features.columns else race_features['GridPosition']
+            y = race_features[target_column] if target_column in race_features.columns else race_features['GridPosition']
+
+            # Handle missing values
+            X = X.fillna(X.mean())
 
             # Scale features
             X_scaled = self.scaler.fit_transform(X)
