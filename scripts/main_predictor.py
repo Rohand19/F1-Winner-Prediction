@@ -12,9 +12,11 @@ import argparse
 from datetime import datetime
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
 from sklearn.model_selection import GridSearchCV, train_test_split
 from sklearn.metrics import mean_squared_error, r2_score
+import random
+import json
 
 # Import custom modules
 from src.data.data_processor import F1DataProcessor
@@ -67,6 +69,14 @@ def parse_arguments():
                       help='Generate visualizations')
     parser.add_argument('--output-dir', type=str, default='results',
                       help='Directory to save results and visualizations')
+    
+    # Weather and race conditions
+    parser.add_argument('--rain-chance', type=float, default=0.0,
+                      help='Chance of rain during race (0.0-1.0)')
+    parser.add_argument('--changing-conditions', action='store_true',
+                      help='Enable changing weather conditions during race')
+    parser.add_argument('--total-laps', type=int, default=None,
+                      help='Set custom number of race laps (overrides default for track)')
     
     return parser.parse_args()
 
@@ -405,7 +415,312 @@ def prepare_data_for_prediction(qualifying_data, historical_data=None):
                 # If conversion fails, drop the column
                 prediction_data = prediction_data.drop(columns=[col])
     
+    # Add track-specific features based on calendar
+    track_features = {
+        'Bahrain': {
+            'track_type': 'desert',
+            'overtaking_difficulty': 0.6,
+            'tire_deg': 0.85,
+            'default_strategy': '2-stop',
+            'track_temp': 35.0,
+            'total_laps': 57
+        },
+        'Saudi Arabia': {
+            'track_type': 'street',
+            'overtaking_difficulty': 0.8,
+            'tire_deg': 0.6,
+            'default_strategy': '1-stop',
+            'track_temp': 30.0,
+            'total_laps': 50
+        },
+        'Australia': {
+            'track_type': 'street/permanent',
+            'overtaking_difficulty': 0.7,
+            'tire_deg': 0.7,
+            'default_strategy': '2-stop',
+            'track_temp': 25.0,
+            'total_laps': 58
+        },
+        'Japan': {
+            'track_type': 'permanent',
+            'overtaking_difficulty': 0.65,
+            'tire_deg': 0.75,
+            'default_strategy': '2-stop',
+            'track_temp': 20.0,
+            'total_laps': 53
+        },
+        'China': {
+            'track_type': 'permanent',
+            'overtaking_difficulty': 0.55,
+            'tire_deg': 0.8,
+            'default_strategy': '2-stop',
+            'track_temp': 18.0,
+            'total_laps': 56
+        },
+        'Miami': {
+            'track_type': 'street',
+            'overtaking_difficulty': 0.6,
+            'tire_deg': 0.7,
+            'default_strategy': '1-stop',
+            'track_temp': 40.0,
+            'total_laps': 57
+        },
+        'Imola': {
+            'track_type': 'permanent',
+            'overtaking_difficulty': 0.85,
+            'tire_deg': 0.65,
+            'default_strategy': '1-stop',
+            'track_temp': 22.0,
+            'total_laps': 63
+        }
+    }
+    
     return prediction_data
+
+def get_track_details(track_name):
+    """Get track-specific details for race simulation.
+    
+    Args:
+        track_name: Name of the track
+        
+    Returns:
+        dict: Track details with total laps, track type, etc.
+    """
+    track_details = {
+        'Bahrain': {
+            'total_laps': 57,
+            'track_type': 'desert',
+            'track_temp': 35.0,
+            'air_temp': 25.0,
+            'humidity': 60.0
+        },
+        'Saudi Arabia': {
+            'total_laps': 50,
+            'track_type': 'street',
+            'track_temp': 30.0,
+            'air_temp': 25.0,
+            'humidity': 45.0
+        },
+        'Australia': {
+            'total_laps': 58,
+            'track_type': 'street/permanent',
+            'track_temp': 25.0,
+            'air_temp': 20.0,
+            'humidity': 70.0
+        },
+        'Japan': {
+            'total_laps': 53,
+            'track_type': 'permanent',
+            'track_temp': 20.0,
+            'air_temp': 18.0,
+            'humidity': 65.0
+        },
+        'China': {
+            'total_laps': 56,
+            'track_type': 'permanent',
+            'track_temp': 18.0,
+            'air_temp': 16.0,
+            'humidity': 75.0
+        },
+        'Miami': {
+            'total_laps': 57,
+            'track_type': 'street',
+            'track_temp': 40.0,
+            'air_temp': 30.0,
+            'humidity': 80.0
+        },
+        'Imola': {
+            'total_laps': 63,
+            'track_type': 'permanent',
+            'track_temp': 22.0,
+            'air_temp': 20.0,
+            'humidity': 60.0
+        },
+        'Monaco': {
+            'total_laps': 78,
+            'track_type': 'street',
+            'track_temp': 30.0,
+            'air_temp': 25.0,
+            'humidity': 50.0
+        },
+        'Spain': {
+            'total_laps': 66,
+            'track_type': 'permanent',
+            'track_temp': 35.0,
+            'air_temp': 30.0,
+            'humidity': 40.0
+        },
+        'Austria': {
+            'total_laps': 71,
+            'track_type': 'permanent',
+            'track_temp': 25.0,
+            'air_temp': 22.0,
+            'humidity': 50.0
+        },
+        'United Kingdom': {
+            'total_laps': 52,
+            'track_type': 'permanent',
+            'track_temp': 20.0,
+            'air_temp': 18.0,
+            'humidity': 80.0
+        },
+        'Hungary': {
+            'total_laps': 70,
+            'track_type': 'permanent',
+            'track_temp': 35.0,
+            'air_temp': 30.0,
+            'humidity': 45.0
+        },
+        'Belgium': {
+            'total_laps': 44,
+            'track_type': 'permanent',
+            'track_temp': 22.0,
+            'air_temp': 20.0,
+            'humidity': 70.0
+        },
+        'Netherlands': {
+            'total_laps': 72,
+            'track_type': 'permanent',
+            'track_temp': 20.0,
+            'air_temp': 18.0,
+            'humidity': 75.0
+        },
+        'Italy': {
+            'total_laps': 53,
+            'track_type': 'permanent',
+            'track_temp': 30.0,
+            'air_temp': 25.0,
+            'humidity': 55.0
+        },
+        'Azerbaijan': {
+            'total_laps': 51,
+            'track_type': 'street',
+            'track_temp': 30.0,
+            'air_temp': 25.0,
+            'humidity': 50.0
+        },
+        'Singapore': {
+            'total_laps': 62,
+            'track_type': 'street',
+            'track_temp': 35.0,
+            'air_temp': 30.0,
+            'humidity': 85.0
+        },
+        'United States': {
+            'total_laps': 56,
+            'track_type': 'permanent',
+            'track_temp': 35.0,
+            'air_temp': 25.0,
+            'humidity': 40.0
+        },
+        'Mexico': {
+            'total_laps': 71,
+            'track_type': 'permanent',
+            'track_temp': 40.0,
+            'air_temp': 25.0,
+            'humidity': 35.0
+        },
+        'Brazil': {
+            'total_laps': 71,
+            'track_type': 'permanent',
+            'track_temp': 35.0,
+            'air_temp': 28.0,
+            'humidity': 70.0
+        },
+        'Las Vegas': {
+            'total_laps': 50,
+            'track_type': 'street',
+            'track_temp': 15.0,
+            'air_temp': 10.0,
+            'humidity': 30.0
+        },
+        'Qatar': {
+            'total_laps': 57,
+            'track_type': 'permanent',
+            'track_temp': 40.0,
+            'air_temp': 35.0,
+            'humidity': 45.0
+        },
+        'Abu Dhabi': {
+            'total_laps': 58,
+            'track_type': 'permanent',
+            'track_temp': 35.0,
+            'air_temp': 30.0,
+            'humidity': 50.0
+        }
+    }
+    
+    # Default values for unknown tracks
+    default_details = {
+        'total_laps': 55,
+        'track_type': 'permanent',
+        'track_temp': 30.0,
+        'air_temp': 25.0,
+        'humidity': 60.0
+    }
+    
+    return track_details.get(track_name, default_details)
+
+def get_track_name_from_event(event_name):
+    """Extract track name from event name."""
+    track_mapping = {
+        'bahrain': 'Bahrain',
+        'saudi': 'Saudi Arabia',
+        'jeddah': 'Saudi Arabia',
+        'australia': 'Australia',
+        'melbourne': 'Australia',
+        'japan': 'Japan',
+        'suzuka': 'Japan',
+        'china': 'China',
+        'shanghai': 'China',
+        'miami': 'Miami',
+        'imola': 'Imola',
+        'emilia': 'Imola',
+        'monaco': 'Monaco',
+        'monte carlo': 'Monaco',
+        'spain': 'Spain',
+        'barcelona': 'Spain',
+        'catalunya': 'Spain',
+        'austria': 'Austria',
+        'styria': 'Austria',
+        'britain': 'United Kingdom',
+        'silverstone': 'United Kingdom',
+        'hungary': 'Hungary',
+        'budapest': 'Hungary',
+        'belgium': 'Belgium',
+        'spa': 'Belgium',
+        'netherlands': 'Netherlands',
+        'zandvoort': 'Netherlands',
+        'italy': 'Italy',
+        'monza': 'Italy',
+        'azerbaijan': 'Azerbaijan',
+        'baku': 'Azerbaijan',
+        'singapore': 'Singapore',
+        'marina bay': 'Singapore',
+        'united states': 'United States',
+        'austin': 'United States',
+        'mexico': 'Mexico',
+        'mexico city': 'Mexico',
+        'brazil': 'Brazil',
+        'sao paulo': 'Brazil',
+        'interlagos': 'Brazil',
+        'las vegas': 'Las Vegas',
+        'qatar': 'Qatar',
+        'losail': 'Qatar',
+        'abu dhabi': 'Abu Dhabi',
+        'yas marina': 'Abu Dhabi'
+    }
+    
+    # Convert to lowercase for matching
+    event_lower = event_name.lower()
+    
+    # Try to find a match
+    for key, value in track_mapping.items():
+        if key in event_lower:
+            return value
+    
+    # If no match found, return the original event name
+    return event_name
 
 def main():
     """
@@ -431,6 +746,17 @@ def main():
         
         # Get race information
         year, race_round, event_name = get_current_race_info(args, data_processor)
+        
+        # Determine track name from event name
+        track_name = get_track_name_from_event(event_name)
+        logger.info(f"Determined track name: {track_name}")
+        
+        # Get track-specific details
+        track_details = get_track_details(track_name)
+        logger.info(f"Track details: {json.dumps(track_details, indent=2)}")
+        
+        # Set total laps from track details or from args if provided
+        total_laps = args.total_laps if args.total_laps is not None else track_details['total_laps']
         
         # Create unique output directory for this run
         run_output_dir = os.path.join(args.output_dir, f'run_{timestamp}')
@@ -523,16 +849,15 @@ def main():
         )
         
         if historical_data is None or len(historical_data) == 0:
-            logger.error("Failed to collect historical race data")
-            sys.exit(1)
-            
-        logger.info(f"Collected historical data from {len(historical_data)} races")
+            logger.warning("No historical race data available, proceeding with qualifying data only")
+        else:
+            logger.info(f"Collected historical data from {len(historical_data)} races")
         
         # Get track information
         track_info = data_processor.get_track_info(year, race_round)
         
         if track_info is None:
-            logger.warning("Could not retrieve track information")
+            logger.warning("Could not retrieve track information, using defaults")
         else:
             logger.info(f"Track: {track_info.get('Name', 'Unknown')} ({track_info.get('Length', 'Unknown')}km)")
         
@@ -571,7 +896,7 @@ def main():
             logger.warning("Still found NaN values after filling with means, filling with zeros")
             features = features.fillna(0)
         
-        # Split data for training (using historical data)
+        # Split data for training
         X = features
         y = prediction_data['Grid_Position']  # Use grid position as a proxy for race position
         
@@ -591,11 +916,30 @@ def main():
         # Evaluate model
         evaluate_model(model, X, y)
         
-        # Create race predictor
-        race_predictor = RacePredictor(model=model, feature_columns=features.columns.tolist())
+        # Initialize weather conditions
+        weather_conditions = {
+            'track_temp': track_details['track_temp'],
+            'air_temp': track_details['air_temp'],
+            'humidity': track_details['humidity'],
+            'rain_chance': args.rain_chance,
+            'wind_speed': 5.0,  # Default
+            'changing_conditions': args.changing_conditions
+        }
         
-        # Make predictions with the simplified qualifying data
-        race_results = race_predictor.predict_finishing_positions(simplified_qualifying)
+        # Create race predictor with track-specific parameters
+        race_predictor = RacePredictor(
+            model=model, 
+            feature_columns=features.columns.tolist(),
+            total_laps=total_laps
+        )
+        
+        # Make predictions with the simplified qualifying data and track-specific settings
+        logger.info(f"Predicting race results for {track_name} with {total_laps} laps...")
+        race_results = race_predictor.predict_finishing_positions(
+            simplified_qualifying,
+            track_name=track_name,
+            weather_conditions=weather_conditions
+        )
         
         # Print results
         print_race_results(race_results)
@@ -612,7 +956,7 @@ def main():
             plt.plot([1, 20], [1, 20], 'r--')  # Diagonal line for reference
             plt.xlabel('Grid Position')
             plt.ylabel('Finish Position')
-            plt.title('Grid vs Finish Position')
+            plt.title(f'Grid vs Finish Position - {track_name} {year}')
             plt.grid(True)
             
             # Add driver labels
@@ -629,21 +973,73 @@ def main():
             # Create team performance visualization
             team_results = race_results.groupby('Team').agg({
                 'Points': 'sum',
-                'Position': 'mean'
+                'Position': 'mean',
+                'PitStops': 'mean'
             }).sort_values('Points', ascending=False)
             
             plt.figure(figsize=(12, 6))
             sns.barplot(x=team_results.index, y='Points', data=team_results)
             plt.xticks(rotation=45, ha='right')
-            plt.title('Team Performance')
+            plt.title(f'Team Performance - {track_name} {year}')
             plt.tight_layout()
             
             team_perf_file = os.path.join(run_output_dir, f'team_performance_{timestamp}.png')
             plt.savefig(team_perf_file)
             plt.close()
             logger.info(f"Saved team performance plot to {team_perf_file}")
+            
+            # Create position changes visualization
+            plt.figure(figsize=(12, 8))
+            position_changes = race_results.copy()
+            position_changes['Change'] = position_changes['GridPosition'] - position_changes['Position']
+            position_changes = position_changes.sort_values('Change', ascending=False)
+            
+            # Use team colors if available
+            team_colors = {
+                'Red Bull Racing': '#0600EF',
+                'Ferrari': '#DC0000',
+                'Mercedes': '#00D2BE',
+                'McLaren': '#FF8700',
+                'Aston Martin': '#006F62',
+                'Alpine': '#0090FF',
+                'Williams': '#005AFF',
+                'RB': '#2B4562',
+                'Kick Sauber': '#900000',
+                'Haas F1 Team': '#FFFFFF'
+            }
+            
+            # Use team colors for bars
+            bar_colors = [team_colors.get(team, '#808080') for team in position_changes['Team']]
+            
+            plt.barh(position_changes['Driver'], position_changes['Change'], color=bar_colors)
+            plt.axvline(x=0, color='black', linestyle='-', linewidth=0.5)
+            plt.xlabel('Position Change (Positive = Gained, Negative = Lost)')
+            plt.ylabel('Driver')
+            plt.title(f'Position Changes - {track_name} {year}')
+            plt.grid(axis='x', linestyle='--', alpha=0.7)
+            
+            pos_changes_file = os.path.join(run_output_dir, f'position_changes_{timestamp}.png')
+            plt.savefig(pos_changes_file)
+            plt.close()
+            logger.info(f"Saved position changes plot to {pos_changes_file}")
+            
+            # Create a pit strategy visualization if we have pit stop data
+            if 'PitStops' in race_results.columns:
+                plt.figure(figsize=(12, 6))
+                plt.bar(race_results['Driver'], race_results['PitStops'])
+                plt.xticks(rotation=45, ha='right')
+                plt.xlabel('Driver')
+                plt.ylabel('Number of Pit Stops')
+                plt.title(f'Pit Strategy - {track_name} {year}')
+                plt.tight_layout()
+                
+                pit_strategy_file = os.path.join(run_output_dir, f'pit_strategy_{timestamp}.png')
+                plt.savefig(pit_strategy_file)
+                plt.close()
+                logger.info(f"Saved pit strategy plot to {pit_strategy_file}")
         
         logger.info("F1 Race Prediction completed successfully")
+        logger.info(f"Results saved to {results_file}")
         
     except Exception as e:
         logger.error(f"Error in prediction pipeline: {e}")

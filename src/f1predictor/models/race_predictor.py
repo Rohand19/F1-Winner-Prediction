@@ -28,9 +28,98 @@ class RacePredictor:
         self.logger = logging.getLogger(__name__)
         self.base_lap_time = 5.412 * 17.5  # Bahrain GP track length * approximate lap time
         self.track_effect = 0.02
+        
+        # Track-specific characteristics
+        self.track_data = {
+            'Bahrain': {
+                'overtaking_difficulty': 0.6,  # Medium difficulty (0-1 scale, higher = harder)
+                'tire_deg': 0.85,              # High tire degradation
+                'track_type': 'desert',        # Track type
+                'pit_loss': 23.0,              # Time lost in pit lane in seconds
+                'drs_effect': 0.6              # DRS effectiveness (0-1 scale)
+            },
+            'Saudi Arabia': {
+                'overtaking_difficulty': 0.8,  # Difficult to overtake
+                'tire_deg': 0.6,               # Lower tire degradation
+                'track_type': 'street',
+                'pit_loss': 24.5,
+                'drs_effect': 0.75             # Stronger DRS effect on long straights
+            },
+            'Australia': {
+                'overtaking_difficulty': 0.7,
+                'tire_deg': 0.7,
+                'track_type': 'street/permanent',
+                'pit_loss': 22.0,
+                'drs_effect': 0.5
+            },
+            'Japan': {
+                'overtaking_difficulty': 0.65,
+                'tire_deg': 0.75,
+                'track_type': 'permanent',
+                'pit_loss': 21.0,
+                'drs_effect': 0.5
+            },
+            'China': {
+                'overtaking_difficulty': 0.55,
+                'tire_deg': 0.8,
+                'track_type': 'permanent',
+                'pit_loss': 22.0,
+                'drs_effect': 0.65
+            },
+            'Miami': {
+                'overtaking_difficulty': 0.6,
+                'tire_deg': 0.7,
+                'track_type': 'street',
+                'pit_loss': 22.5,
+                'drs_effect': 0.6
+            },
+            'Imola': {
+                'overtaking_difficulty': 0.85,
+                'tire_deg': 0.65,
+                'track_type': 'permanent',
+                'pit_loss': 21.0,
+                'drs_effect': 0.45
+            },
+            'Monaco': {
+                'overtaking_difficulty': 0.95,
+                'tire_deg': 0.5,
+                'track_type': 'street',
+                'pit_loss': 25.0,
+                'drs_effect': 0.2
+            },
+            'Spain': {
+                'overtaking_difficulty': 0.7,
+                'tire_deg': 0.75,
+                'track_type': 'permanent',
+                'pit_loss': 21.5,
+                'drs_effect': 0.55
+            },
+            'Canada': {
+                'overtaking_difficulty': 0.5,
+                'tire_deg': 0.8,
+                'track_type': 'street/permanent',
+                'pit_loss': 22.0,
+                'drs_effect': 0.7
+            }
+        }
+        
+        # Default track data if specific track not found
+        self.default_track_data = {
+            'overtaking_difficulty': 0.65,
+            'tire_deg': 0.7,
+            'track_type': 'permanent',
+            'pit_loss': 22.0,
+            'drs_effect': 0.5
+        }
 
-    def predict_finishing_positions(self, qualifying_data: pd.DataFrame) -> pd.DataFrame:
-        """Predict race finishing positions with enhanced reliability and incident handling."""
+    def predict_finishing_positions(self, qualifying_data: pd.DataFrame, track_name='Bahrain', weather_conditions=None) -> pd.DataFrame:
+        """Predict race finishing positions with enhanced reliability and incident handling.
+        
+        Args:
+            qualifying_data: DataFrame with qualifying data
+            track_name: Name of the track for the race
+            weather_conditions: Dict with weather data (temp, humidity, rain_chance, etc.)
+        """
         # Make a copy of qualifying data to ensure we don't modify it
         qualifying_copy = qualifying_data.copy()
         
@@ -46,6 +135,7 @@ class RacePredictor:
         results['Points'] = 0
         results['Gap'] = None
         results['StartPosition'] = None
+        results['PitStops'] = 0
         
         # Add DriverId if available
         if 'DriverId' in qualifying_copy.columns:
@@ -76,16 +166,61 @@ class RacePredictor:
             print(f"  {row['GridPosition']}: {row['Driver']} ({row['Team']})")
         print()
         
-        # Calculate base lap times and tire degradation
-        base_lap_times = self._calculate_base_lap_times(qualifying_copy)
-        tire_degradation = self._calculate_tire_degradation(qualifying_copy)
+        # Get track-specific data
+        track_data = self.track_data.get(track_name, self.default_track_data)
+        
+        # Initialize weather conditions if not provided
+        if weather_conditions is None:
+            weather_conditions = {
+                'track_temp': 35.0,        # Default track temperature
+                'air_temp': 25.0,          # Default air temperature
+                'humidity': 60.0,          # Default humidity
+                'rain_chance': 0.0,        # Default chance of rain (0.0 = 0%, 1.0 = 100%)
+                'wind_speed': 5.0,         # Default wind speed in km/h
+                'changing_conditions': False # Static conditions by default
+            }
+        
+        # Calculate base lap times and tire degradation with track/weather factors
+        base_lap_times = self._calculate_base_lap_times(qualifying_copy, track_name)
+        tire_degradation = self._calculate_tire_degradation(qualifying_copy, track_data['tire_deg'])
         
         # Initialize race state
         current_lap = 1
-        total_laps = 57  # Standard race distance
+        total_laps = self.total_laps
         safety_car_laps = []
         virtual_safety_car_laps = []
         
+        # Initialize tire strategies for each driver
+        tire_strategies = {}
+        for idx in results.index:
+            # Random strategy choice (1-stop, 2-stop, or 3-stop)
+            strategy_probs = [0.3, 0.6, 0.1]  # Probabilities for 1, 2, 3 stops
+            n_stops = np.random.choice([1, 2, 3], p=strategy_probs)
+            
+            # Calculate stop laps - distribute evenly with some randomness
+            stop_laps = []
+            for i in range(n_stops):
+                # Base lap is evenly distributed
+                base_lap = int((i + 1) * total_laps / (n_stops + 1))
+                # Add some randomness (-5 to +5 laps)
+                lap = min(total_laps - 5, max(15, base_lap + np.random.randint(-5, 6)))
+                stop_laps.append(lap)
+            
+            # Sort stop laps
+            stop_laps.sort()
+            
+            # Store strategy
+            tire_strategies[idx] = {
+                'n_stops': n_stops,
+                'stop_laps': stop_laps,
+                'current_tire_age': 0,
+                'tire_compound': 'medium'  # Starting compound
+            }
+            
+            # Top 10 typically start on different tires than others
+            if results.at[idx, 'GridPosition'] <= 10:
+                tire_strategies[idx]['tire_compound'] = 'soft'
+            
         # Team reliability factors - higher values mean better reliability
         team_reliability = {
             'Red Bull Racing': 0.95,
@@ -131,31 +266,238 @@ class RacePredictor:
             'Logan Sargeant': 0.80
         }
         
-        # Base probability of incident per lap (much lower than before)
+        # Wet weather performance factors (higher = better in rain)
+        wet_weather_skill = {
+            'Max Verstappen': 0.95,       # Exceptional in wet
+            'Lewis Hamilton': 0.94,       # Exceptional in wet
+            'Fernando Alonso': 0.93,      # Exceptional in wet
+            'Carlos Sainz': 0.88,
+            'Charles Leclerc': 0.86,
+            'Lando Norris': 0.87,
+            'George Russell': 0.87,
+            'Sergio Perez': 0.85,
+            'Oscar Piastri': 0.82,
+            'Lance Stroll': 0.86,         # Relatively good in wet
+            'Sebastian Vettel': 0.90,
+            'Daniel Ricciardo': 0.85,
+            'Alexander Albon': 0.84,
+            'Kevin Magnussen': 0.85,
+            'Nico Hulkenberg': 0.85,
+            'Esteban Ocon': 0.84,
+            'Pierre Gasly': 0.83,
+            'Valtteri Bottas': 0.85,
+            'Guanyu Zhou': 0.80,
+            'Logan Sargeant': 0.78
+        }
+        
+        # Base probability of incident per lap (lower for reliable simulation)
         base_incident_prob = 0.001  # 0.1% chance per lap
         
-        # Simulate race with more realistic reliability
+        # Weather conditions can evolve during the race if changing_conditions is True
+        if weather_conditions['changing_conditions']:
+            # Create a simple weather evolution
+            weather_timeline = {}
+            
+            # Start with current conditions
+            current_rain_chance = weather_conditions['rain_chance']
+            
+            # Define some key points for weather evolution
+            weather_timeline[1] = current_rain_chance  # Starting condition
+            
+            # Random points where weather might change
+            change_points = sorted(np.random.choice(
+                range(10, total_laps-5), 
+                size=min(3, np.random.randint(1, 4)), 
+                replace=False
+            ))
+            
+            for lap in change_points:
+                # Generate a new rain chance that evolves from the previous one
+                new_rain_chance = min(1.0, max(0.0, current_rain_chance + np.random.uniform(-0.3, 0.3)))
+                weather_timeline[lap] = new_rain_chance
+                current_rain_chance = new_rain_chance
+            
+            weather_timeline[total_laps] = current_rain_chance  # Ending condition
+        else:
+            # Static weather
+            weather_timeline = {1: weather_conditions['rain_chance']}
+        
+        # Initialize driver-specific race state
+        driver_states = {}
+        for idx in results.index:
+            driver_states[idx] = {
+                'position': results.at[idx, 'GridPosition'],
+                'current_lap': 0,
+                'in_pit': False,
+                'pit_penalty': 0.0,  # Time penalty for pit stop
+                'drs_enabled': False,
+                'tire_age': 0,
+                'energy_management': np.random.uniform(0.7, 1.0),  # How well managing energy
+                'race_pace': np.random.uniform(0.8, 1.0),  # Race pace compared to qualifying
+                'overtaking_opportunity': 0.0  # Probability of attempting an overtake
+            }
+        
+        # Simulate race with more realistic reliability and strategy
         while current_lap <= total_laps:
+            # Update weather conditions for this lap
+            current_rain_chance = 0.0
+            for lap in sorted(weather_timeline.keys()):
+                if current_lap >= lap:
+                    current_rain_chance = weather_timeline[lap]
+            
+            is_wet_lap = current_rain_chance > 0.2  # Consider it wet if rain chance > 20%
+            rain_intensity = 0.0
+            if is_wet_lap:
+                rain_intensity = min(1.0, current_rain_chance * 1.5)  # Scale up for effect
+            
             # Update tire degradation and pit stops
             for idx, row in results.iterrows():
                 if row['Status'] == 'Running':
-                    # Calculate tire degradation
-                    degradation = tire_degradation[idx] * (current_lap / total_laps)
+                    # Get driver's current state
+                    state = driver_states[idx]
+                    strategy = tire_strategies[idx]
                     
-                    # Simulate pit stops based on tire wear and strategy
-                    if current_lap > 15 and current_lap < 45:  # More realistic pit window
-                        if current_lap % 20 == results.index.get_loc(idx) % 20:  # Stagger pit stops
-                            results.at[idx, 'TotalTime'] += np.random.uniform(20.0, 24.0)  # Realistic pit stop time
+                    # Check if it's time for a pit stop
+                    if current_lap in strategy['stop_laps'] and not state['in_pit']:
+                        # Enter pit
+                        state['in_pit'] = True
+                        
+                        # Apply pit stop time penalty
+                        pit_time = track_data['pit_loss']
+                        
+                        # Add some team-specific pit stop variation (±1.5s)
+                        team = row['Team']
+                        team_pit_factor = np.random.normal(0, 1.5)
+                        
+                        # Top teams have slightly faster stops on average
+                        if team in ['Red Bull Racing', 'Ferrari', 'Mercedes', 'McLaren']:
+                            team_pit_factor -= 0.5
+                        elif team in ['Alpine', 'Kick Sauber', 'Haas F1 Team']:
+                            team_pit_factor += 0.5
+                        
+                        pit_time += team_pit_factor
+                        
+                        # Apply the penalty
+                        state['pit_penalty'] = pit_time
+                        
+                        # Update pit stop count
+                        results.at[idx, 'PitStops'] += 1
+                        
+                        # Reset tire age
+                        strategy['current_tire_age'] = 0
+                        
+                        # Switch compound based on race stage
+                        race_progress = current_lap / total_laps
+                        if race_progress < 0.3:
+                            strategy['tire_compound'] = 'medium'
+                        elif race_progress < 0.7:
+                            strategy['tire_compound'] = 'hard' if np.random.random() < 0.7 else 'medium'
+                        else:
+                            strategy['tire_compound'] = 'soft' if np.random.random() < 0.6 else 'medium'
+                        
+                        # Wet conditions use wet or intermediate tires
+                        if is_wet_lap:
+                            if rain_intensity > 0.6:
+                                strategy['tire_compound'] = 'wet'
+                            else:
+                                strategy['tire_compound'] = 'intermediate'
                     
-                    # Update lap time with degradation
-                    lap_time = base_lap_times[idx] * (1 + degradation)
-                    
-                    # Add random variation (smaller than before)
-                    lap_time *= np.random.normal(1, 0.01)  # 1% standard deviation
-                    
-                    # Update total time and laps
-                    results.at[idx, 'TotalTime'] += lap_time
-                    results.at[idx, 'LapsCompleted'] = current_lap
+                    # Calculate lap time based on various factors
+                    if state['in_pit']:
+                        # Driver is in pit this lap
+                        results.at[idx, 'TotalTime'] += state['pit_penalty']
+                        state['in_pit'] = False  # Exit pit
+                        state['pit_penalty'] = 0.0
+                    else:
+                        # Regular lap
+                        # Get base lap time
+                        lap_time = base_lap_times[idx]
+                        
+                        # Apply tire degradation based on compound and age
+                        tire_compound = strategy['tire_compound']
+                        tire_age = strategy['current_tire_age']
+                        
+                        # Different compounds have different degradation profiles
+                        if tire_compound == 'soft':
+                            deg_factor = tire_degradation[idx] * 1.5  # Higher degradation
+                            max_optimal_age = 15  # Optimal performance till this lap
+                        elif tire_compound == 'medium':
+                            deg_factor = tire_degradation[idx] * 1.0  # Medium degradation
+                            max_optimal_age = 25
+                        elif tire_compound == 'hard':
+                            deg_factor = tire_degradation[idx] * 0.7  # Lower degradation
+                            max_optimal_age = 35
+                        elif tire_compound == 'intermediate':
+                            if rain_intensity > 0.3:  # Good for light rain
+                                deg_factor = tire_degradation[idx] * 0.9
+                                max_optimal_age = 20
+                            else:  # High degradation in dry conditions
+                                deg_factor = tire_degradation[idx] * 2.0
+                                max_optimal_age = 10
+                        elif tire_compound == 'wet':
+                            if rain_intensity > 0.7:  # Good for heavy rain
+                                deg_factor = tire_degradation[idx] * 0.8
+                                max_optimal_age = 25
+                            else:  # High degradation in light rain
+                                deg_factor = tire_degradation[idx] * 1.8
+                                max_optimal_age = 15
+                        
+                        # Apply non-linear degradation (increases exponentially after optimal age)
+                        if tire_age <= max_optimal_age:
+                            # Linear phase
+                            tire_effect = deg_factor * tire_age * 0.01
+                        else:
+                            # Exponential phase
+                            base_deg = deg_factor * max_optimal_age * 0.01
+                            exp_deg = deg_factor * (1 + (tire_age - max_optimal_age) * 0.02)
+                            tire_effect = base_deg + exp_deg
+                        
+                        lap_time *= (1 + tire_effect)
+                        
+                        # Apply weather effects
+                        if is_wet_lap:
+                            # Get driver's wet weather skill
+                            driver = row['Driver']
+                            wet_skill = wet_weather_skill.get(driver, 0.85)
+                            
+                            # Apply penalty based on rain intensity and skill
+                            # Wet conditions slow everyone down, but skilled drivers less so
+                            wet_penalty = rain_intensity * 0.12 * (2 - wet_skill)
+                            lap_time *= (1 + wet_penalty)
+                            
+                            # Increase chance of incidents in wet conditions
+                            if np.random.random() < rain_intensity * 0.05:
+                                # Minor error in wet - add small time penalty
+                                lap_time += np.random.uniform(0.5, 3.0)
+                        
+                        # Apply DRS effect if eligible (not first 2 laps, not in wet)
+                        if current_lap > 2 and not is_wet_lap:
+                            # Check if driver is within 1 second of the car ahead
+                            pos = int(row['Position'])
+                            cars_ahead = results[(results['Position'] < pos) & (results['Status'] == 'Running')]
+                            if not cars_ahead.empty:
+                                # Find the nearest car ahead
+                                nearest_ahead = cars_ahead.sort_values('Position', ascending=False).iloc[0]
+                                time_gap = results.at[idx, 'TotalTime'] - nearest_ahead['TotalTime']
+                                
+                                # If within DRS range (1 second)
+                                if time_gap < 1.0:
+                                    # Apply DRS benefit
+                                    drs_benefit = track_data['drs_effect'] * 0.01  # Convert to percentage
+                                    lap_time *= (1 - drs_benefit)
+                                    state['drs_enabled'] = True
+                                else:
+                                    state['drs_enabled'] = False
+                        
+                        # Apply random variation (smaller for more controlled simulation)
+                        lap_time *= np.random.normal(1, 0.005)  # 0.5% standard deviation
+                        
+                        # Update total time and laps
+                        results.at[idx, 'TotalTime'] += lap_time
+                        results.at[idx, 'LapsCompleted'] = current_lap
+                        
+                        # Update tire age
+                        strategy['current_tire_age'] += 1
             
             # Simulate race incidents with more realistic reliability
             if current_lap > 1:
@@ -184,6 +526,15 @@ class RacePredictor:
                         if current_lap < 5:
                             incident_prob *= 1.5
                         
+                        # Increase incidents in wet conditions
+                        if is_wet_lap:
+                            incident_prob *= (1 + rain_intensity)
+                        
+                        # Increase incidents on high tire wear
+                        strategy = tire_strategies[idx]
+                        if strategy['current_tire_age'] > 35:
+                            incident_prob *= (1 + (strategy['current_tire_age'] - 35) * 0.03)
+                        
                         # Simulate incidents
                         if np.random.random() < incident_prob:
                             # Determine incident type - much less likely to be DNF
@@ -199,7 +550,7 @@ class RacePredictor:
                                 # Add smaller time penalty
                                 results.at[idx, 'TotalTime'] += np.random.uniform(3.0, 8.0)
             
-            # More realistic safety car and virtual safety car (fewer occurrences)
+            # More realistic safety car and virtual safety car
             if current_lap % 15 == 0 and np.random.random() < 0.3:  # Lower probability of safety car
                 # Check if any car DNF'd on this lap
                 dnf_this_lap = False
@@ -700,9 +1051,12 @@ class RacePredictor:
         
         return lap_time
 
-    def _calculate_base_lap_times(self, qualifying_data: pd.DataFrame) -> pd.Series:
+    def _calculate_base_lap_times(self, qualifying_data: pd.DataFrame, track_name='Bahrain') -> pd.Series:
         """Calculate base lap times for each driver based on qualifying data."""
         base_times = pd.Series(index=qualifying_data.index)
+        
+        # Get track-specific data
+        track_data = self.track_data.get(track_name, self.default_track_data)
         
         # 2024 track-specific baseline lap times in seconds (representative of race pace)
         track_baselines = {
@@ -732,52 +1086,201 @@ class RacePredictor:
             'Abu Dhabi': 87.0          # ~1:27 lap time
         }
         
-        # Default to Bahrain if track not specified (most common first race)
-        default_track = 'Bahrain'
-        baseline_time = track_baselines.get(default_track, 90.0)
+        baseline_time = track_baselines.get(track_name, 90.0)
         
-        # Team performance factors for 2024 (percentage of optimal performance)
+        # 2024 team performance factors with track type specializations
+        # Format: {'team_name': {'overall': 0.0, 'street': 0.0, 'permanent': 0.0, 'desert': 0.0}}
+        # Higher values = slower (multiplier)
         team_performance = {
-            'Red Bull Racing': 1.000,   # Benchmark (fastest car)
-            'Ferrari': 1.002,           # 0.2% slower
-            'McLaren': 1.003,           # 0.3% slower
-            'Mercedes': 1.005,          # 0.5% slower
-            'Aston Martin': 1.010,      # 1.0% slower
-            'RB': 1.018,                # 1.8% slower
-            'Williams': 1.022,          # 2.2% slower
-            'Haas F1 Team': 1.025,      # 2.5% slower 
-            'Alpine': 1.030,            # 3.0% slower
-            'Kick Sauber': 1.035,       # 3.5% slower
-            # Aliases
-            'Red Bull': 1.000,
-            'Haas': 1.025,
-            'Sauber': 1.035,
-            'Aston Martin Aramco': 1.010,
-            'Alpine F1 Team': 1.030
+            'Red Bull Racing': {
+                'overall': 1.000,   # Benchmark (fastest car)
+                'street': 1.000,    # Strong everywhere
+                'permanent': 1.000,
+                'desert': 1.000,
+                'high_speed': 0.998, # Slightly better on high-speed tracks
+                'low_speed': 1.002   # Slightly worse on low-speed tracks
+            },
+            'Ferrari': {
+                'overall': 1.002,    # 0.2% slower overall
+                'street': 1.003,     # Not as strong on street circuits
+                'permanent': 1.001,  # Better on permanent tracks
+                'desert': 1.002,
+                'high_speed': 1.003, # Not as strong on high-speed tracks
+                'low_speed': 1.000   # Good on low-speed tracks
+            },
+            'McLaren': {
+                'overall': 1.003,    # 0.3% slower overall
+                'street': 1.004,     # Not as strong on street circuits
+                'permanent': 1.002,  # Better on permanent tracks
+                'desert': 1.003,
+                'high_speed': 1.001, # Good on high-speed tracks
+                'low_speed': 1.005   # Weaker on low-speed tracks
+            },
+            'Mercedes': {
+                'overall': 1.005,    # 0.5% slower overall
+                'street': 1.006,     # Struggles a bit on street circuits
+                'permanent': 1.004,  # Better on permanent tracks
+                'desert': 1.005,
+                'high_speed': 1.004, # Decent on high-speed tracks
+                'low_speed': 1.006   # Not as good on low-speed tracks
+            },
+            'Aston Martin': {
+                'overall': 1.010,    # 1.0% slower overall
+                'street': 1.012,     # Not as strong on street circuits
+                'permanent': 1.008,  # Better on permanent tracks
+                'desert': 1.010,
+                'high_speed': 1.011, # Not as good on high-speed tracks
+                'low_speed': 1.008   # Better on low-speed tracks
+            },
+            'RB': {
+                'overall': 1.018,    # 1.8% slower overall
+                'street': 1.016,     # Better on street circuits
+                'permanent': 1.020,  # Not as strong on permanent tracks
+                'desert': 1.018,
+                'high_speed': 1.015, # Good on high-speed tracks
+                'low_speed': 1.020   # Struggles on low-speed tracks
+            },
+            'Williams': {
+                'overall': 1.022,    # 2.2% slower overall
+                'street': 1.024,     # Not as strong on street circuits
+                'permanent': 1.020,  # Better on permanent tracks
+                'desert': 1.022,
+                'high_speed': 1.018, # Good on high-speed tracks
+                'low_speed': 1.025   # Struggles on low-speed tracks
+            },
+            'Haas F1 Team': {
+                'overall': 1.025,    # 2.5% slower overall
+                'street': 1.028,     # Not as strong on street circuits
+                'permanent': 1.023,  # Better on permanent tracks
+                'desert': 1.025,
+                'high_speed': 1.023, # Decent on high-speed tracks
+                'low_speed': 1.027   # Not as good on low-speed tracks
+            },
+            'Alpine': {
+                'overall': 1.030,    # 3.0% slower overall
+                'street': 1.032,     # Not as strong on street circuits
+                'permanent': 1.028,  # Better on permanent tracks
+                'desert': 1.030,
+                'high_speed': 1.028, # Better on high-speed tracks
+                'low_speed': 1.032   # Not as good on low-speed tracks
+            },
+            'Kick Sauber': {
+                'overall': 1.035,    # 3.5% slower overall
+                'street': 1.038,     # Not as strong on street circuits
+                'permanent': 1.033,  # Better on permanent tracks
+                'desert': 1.035,
+                'high_speed': 1.035, # Average on high-speed tracks
+                'low_speed': 1.035   # Average on low-speed tracks
+            }
         }
         
-        # Driver skill factors (percentage adjustment to team baseline)
+        # Add aliases
+        team_performance['Red Bull'] = team_performance['Red Bull Racing']
+        team_performance['Haas'] = team_performance['Haas F1 Team']
+        team_performance['Sauber'] = team_performance['Kick Sauber']
+        team_performance['Aston Martin Aramco'] = team_performance['Aston Martin']
+        team_performance['Alpine F1 Team'] = team_performance['Alpine']
+        
+        # Track type for performance specialization
+        track_type = track_data.get('track_type', 'permanent')
+        
+        # Simplify track types for team performance lookup
+        if 'street' in track_type:
+            perf_track_type = 'street'
+        elif track_type == 'desert':
+            perf_track_type = 'desert'
+        else:
+            perf_track_type = 'permanent'
+        
+        # High-speed vs low-speed categorization
+        high_speed_tracks = ['Monza', 'Silverstone', 'Spa', 'Saudi Arabia', 'Azerbaijan']
+        low_speed_tracks = ['Monaco', 'Singapore', 'Hungary', 'Abu Dhabi']
+        
+        if track_name in high_speed_tracks:
+            speed_type = 'high_speed'
+        elif track_name in low_speed_tracks:
+            speed_type = 'low_speed'
+        else:
+            speed_type = 'overall'  # Default to overall
+        
+        # Driver skill factors updated to include track specialization
+        # Format: {'driver_name': {'overall': 0.0, 'street': 0.0, 'permanent': 0.0}}
+        # Lower values = faster (percentage off team baseline)
         driver_skill = {
-            'Max Verstappen': 0.997,    # 0.3% faster than team baseline
-            'Lewis Hamilton': 0.998,    # 0.2% faster than team baseline 
-            'Fernando Alonso': 0.998,   # 0.2% faster than team baseline
-            'Charles Leclerc': 0.998,   # 0.2% faster than team baseline
-            'Lando Norris': 0.998,      # 0.2% faster than team baseline
-            'Carlos Sainz': 0.999,      # 0.1% faster than team baseline
-            'George Russell': 0.999,    # 0.1% faster than team baseline
-            'Sergio Perez': 1.002,      # 0.2% slower than team baseline
-            'Oscar Piastri': 1.001,     # 0.1% slower than team baseline
-            'Yuki Tsunoda': 1.000,      # Team baseline
-            'Daniel Ricciardo': 1.001,  # 0.1% slower than team baseline
-            'Alexander Albon': 0.997,   # 0.3% faster than team baseline
-            'Lance Stroll': 1.004,      # 0.4% slower than team baseline
-            'Kevin Magnussen': 1.001,   # 0.1% slower than team baseline
-            'Nico Hulkenberg': 0.999,   # 0.1% faster than team baseline
-            'Esteban Ocon': 1.000,      # Team baseline
-            'Pierre Gasly': 1.000,      # Team baseline
-            'Valtteri Bottas': 1.000,   # Team baseline
-            'Guanyu Zhou': 1.002,       # 0.2% slower than team baseline
-            'Logan Sargeant': 1.005     # 0.5% slower than team baseline
+            'Max Verstappen': {
+                'overall': 0.997,    # 0.3% faster than team baseline
+                'street': 0.998,     # Slightly less advantage on street
+                'permanent': 0.996,  # Great on permanent tracks
+                'wet': 0.995,        # Exceptional in wet conditions
+                'high_speed': 0.996, # Great at high-speed tracks
+                'low_speed': 0.998   # Good but not as exceptional on low-speed tracks
+            },
+            'Lewis Hamilton': {
+                'overall': 0.998,    # 0.2% faster than team baseline
+                'street': 0.997,     # Better on street circuits
+                'permanent': 0.998,  # Good on permanent tracks
+                'wet': 0.996,        # Excellent in wet conditions
+                'high_speed': 0.998, # Good at high-speed tracks
+                'low_speed': 0.997   # Better at low-speed technical tracks
+            },
+            'Fernando Alonso': {
+                'overall': 0.998,    # 0.2% faster than team baseline
+                'street': 0.996,     # Exceptional on street circuits
+                'permanent': 0.999,  # Good on permanent tracks
+                'wet': 0.996,        # Excellent in wet conditions
+                'high_speed': 0.999, # Good at high-speed tracks
+                'low_speed': 0.996   # Exceptional at low-speed technical tracks
+            },
+            'Charles Leclerc': {
+                'overall': 0.998,    # 0.2% faster than team baseline
+                'street': 0.996,     # Exceptional on street circuits (Monaco specialist)
+                'permanent': 0.999,  # Good on permanent tracks
+                'wet': 0.999,        # Average in wet conditions
+                'high_speed': 0.998, # Good at high-speed tracks
+                'low_speed': 0.997   # Strong at low-speed technical tracks
+            },
+            'Lando Norris': {
+                'overall': 0.998,    # 0.2% faster than team baseline
+                'street': 0.998,     # Good on street circuits
+                'permanent': 0.997,  # Better on permanent tracks
+                'wet': 0.997,        # Good in wet conditions
+                'high_speed': 0.997, # Strong at high-speed tracks
+                'low_speed': 0.999   # Less strong at low-speed tracks
+            },
+            'Carlos Sainz': {
+                'overall': 0.999,    # 0.1% faster than team baseline
+                'street': 0.998,     # Good on street circuits
+                'permanent': 0.999,  # Average on permanent tracks
+                'wet': 0.998,        # Good in wet conditions
+                'high_speed': 0.999, # Average at high-speed tracks
+                'low_speed': 0.998   # Better at low-speed tracks
+            },
+            'George Russell': {
+                'overall': 0.999,    # 0.1% faster than team baseline
+                'street': 0.999,     # Average on street circuits
+                'permanent': 0.998,  # Better on permanent tracks
+                'wet': 0.998,        # Good in wet conditions
+                'high_speed': 0.998, # Good at high-speed tracks
+                'low_speed': 0.999   # Average at low-speed tracks
+            },
+            'Sergio Perez': {
+                'overall': 1.002,    # 0.2% slower than team baseline
+                'street': 0.999,     # Strong on street circuits
+                'permanent': 1.004,  # Weaker on permanent tracks
+                'wet': 1.003,        # Struggles in wet conditions
+                'high_speed': 1.003, # Not as strong at high-speed tracks
+                'low_speed': 0.999   # Good at low-speed tracks
+            }
+        }
+        
+        # Default driver skills for missing drivers
+        default_driver_skill = {
+            'overall': 1.000,     # Team baseline
+            'street': 1.000,      # Team baseline
+            'permanent': 1.000,   # Team baseline
+            'wet': 1.000,         # Team baseline
+            'high_speed': 1.000,  # Team baseline
+            'low_speed': 1.000    # Team baseline
         }
         
         # Check if qualifying time columns exist
@@ -793,9 +1296,46 @@ class RacePredictor:
             driver = qualifying_data.loc[idx, 'Driver'] if 'Driver' in qualifying_data.columns else 'Unknown'
             team = qualifying_data.loc[idx, 'Team'] if 'Team' in qualifying_data.columns else 'Unknown'
             
-            # Get team and driver performance factors
-            team_factor = team_performance.get(team, 1.02)  # Default 2% off pace if team unknown
-            driver_factor = driver_skill.get(driver, 1.00)  # Default to neutral if driver unknown
+            # Get team-specific performance factor based on track type
+            team_factor = 1.02  # Default 2% off pace if team unknown
+            if team in team_performance:
+                # Get track-specific performance if available, otherwise use overall
+                team_data = team_performance[team]
+                if perf_track_type in team_data:
+                    team_track_factor = team_data[perf_track_type]
+                else:
+                    team_track_factor = team_data['overall']
+                
+                # Apply speed type specialization if available
+                if speed_type in team_data:
+                    team_speed_factor = team_data[speed_type]
+                else:
+                    team_speed_factor = team_data['overall']
+                
+                # Combined factor (weighted average: 70% track type, 30% speed type)
+                team_factor = (team_track_factor * 0.7) + (team_speed_factor * 0.3)
+            
+            # Get driver-specific performance factor
+            driver_factor = 1.00  # Default to neutral if driver unknown
+            if driver in driver_skill:
+                # Get track-specific performance if available, otherwise use overall
+                driver_data = driver_skill[driver]
+                if perf_track_type in driver_data:
+                    driver_track_factor = driver_data[perf_track_type]
+                else:
+                    driver_track_factor = driver_data['overall']
+                
+                # Apply speed type specialization if available
+                if speed_type in driver_data:
+                    driver_speed_factor = driver_data[speed_type]
+                else:
+                    driver_speed_factor = driver_data['overall']
+                
+                # Combined factor (weighted average: 70% track type, 30% speed type)
+                driver_factor = (driver_track_factor * 0.7) + (driver_speed_factor * 0.3)
+            else:
+                # Default driver factors
+                driver_factor = default_driver_skill['overall']
             
             # Get qualifying position for calculation
             grid_pos = qualifying_data.loc[idx, 'Grid_Position'] if 'Grid_Position' in qualifying_data.columns else 10
@@ -815,6 +1355,13 @@ class RacePredictor:
                 
                 # Convert to race pace with some randomness
                 random_factor = np.random.normal(1.0, 0.002)  # Small random variation (0.2%)
+                
+                # Apply track difficulty factor for qualifying to race conversion
+                # Tracks where qualifying pace is less representative of race pace
+                high_disparity_tracks = ['Monaco', 'Singapore']
+                if track_name in high_disparity_tracks:
+                    quali_to_race_factor *= 1.02  # Extra 2% gap between quali and race
+                
                 base_times[idx] = q_time * quali_to_race_factor * random_factor
             else:
                 # No qualifying data, use baseline approach based on track, team and driver
@@ -835,8 +1382,13 @@ class RacePredictor:
         
         return base_times
 
-    def _calculate_tire_degradation(self, qualifying_data: pd.DataFrame) -> pd.Series:
-        """Calculate tire degradation rates for each driver based on qualifying data and historical performance."""
+    def _calculate_tire_degradation(self, qualifying_data: pd.DataFrame, tire_deg_factor: float) -> pd.Series:
+        """Calculate tire degradation rates for each driver based on qualifying data and historical performance.
+        
+        Args:
+            qualifying_data: DataFrame with qualifying data
+            tire_deg_factor: Track-specific tire degradation factor (higher = more degradation)
+        """
         degradation = pd.Series(index=qualifying_data.index, data=0.001)  # Default minimal degradation
         
         # 2024 team-specific tire degradation factors (higher values = more degradation)
@@ -883,6 +1435,34 @@ class RacePredictor:
             'Logan Sargeant': 0.80   # Still developing skills
         }
         
+        # Driving style factors for tire wear (higher means harder on tires)
+        driving_style = {
+            'Max Verstappen': 0.85,  # Smooth, easy on tires
+            'Lewis Hamilton': 0.80,  # Very smooth, excellent tire management
+            'Fernando Alonso': 0.82,  # Veteran smoothness
+            'Charles Leclerc': 0.90,  # More aggressive, harder on tires
+            'Lando Norris': 0.87,  # Fairly smooth
+            'Carlos Sainz': 0.88,  # Balanced style
+            'George Russell': 0.85,  # Technical, smooth style
+            'Sergio Perez': 0.82,  # Gentle on tires
+            'Oscar Piastri': 0.88,  # Still developing smoothness
+            'Yuki Tsunoda': 0.92,  # Aggressive style
+            'Daniel Ricciardo': 0.90,  # Can be hard on tires with late braking
+            'Alexander Albon': 0.87,  # Fairly balanced
+            'Lance Stroll': 0.89,  # Can be aggressive
+            'Kevin Magnussen': 0.93,  # Aggressive, hard on tires
+            'Nico Hulkenberg': 0.88,  # Balanced style
+            'Esteban Ocon': 0.88,  # Balanced style
+            'Pierre Gasly': 0.87,  # Fairly balanced
+            'Valtteri Bottas': 0.84,  # Smooth, technical
+            'Guanyu Zhou': 0.89,  # Still developing smoothness
+            'Logan Sargeant': 0.91   # Still learning optimal technique
+        }
+        
+        # Apply track-specific tire degradation multiplier
+        # Higher values = more degradation
+        track_tire_multiplier = tire_deg_factor  # From track data
+        
         # Calculate degradation based on multiple factors
         for idx in degradation.index:
             # Base degradation rate (slightly lower than before)
@@ -896,18 +1476,16 @@ class RacePredictor:
             team_factor = team_tire_factors.get(team, 0.85)  # Default if team not found
             base_rate *= team_factor
             
-            # Apply driver-specific factor
+            # Apply driver-specific skill factor
             driver_factor = driver_tire_skill.get(driver, 0.85)  # Default if driver not found
             base_rate *= (2 - driver_factor)  # Invert the scale so higher skill means lower degradation
             
-            # Adjust for track type if available (unchanged from previous)
-            if 'Track_Type' in qualifying_data.columns:
-                track_type = qualifying_data.at[idx, 'Track_Type']
-                if pd.notna(track_type):
-                    if track_type == 'high_deg':
-                        base_rate *= 1.3  # High degradation tracks
-                    elif track_type == 'low_deg':
-                        base_rate *= 0.8  # Low degradation tracks
+            # Apply driving style factor (aggressive drivers wear tires more)
+            style_factor = driving_style.get(driver, 0.88)  # Default if driver not found
+            base_rate *= style_factor
+            
+            # Apply track-specific degradation multiplier
+            base_rate *= track_tire_multiplier
             
             # Adjust based on grid position - cars at front tend to have cleaner air
             grid_pos = qualifying_data.loc[idx, 'Grid_Position'] if 'Grid_Position' in qualifying_data.columns else 10
