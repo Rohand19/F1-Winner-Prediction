@@ -54,7 +54,7 @@ def parse_arguments():
                       help='Force reload of all data (ignore cache)')
     
     # Training options
-    parser.add_argument('--model-type', type=str, default='xgboost',
+    parser.add_argument('--model-type', type=str, default='gradient_boosting',
                       choices=['xgboost', 'gradient_boosting', 'random_forest', 'ridge', 'lasso', 'svr'],
                       help='Model type to use for predictions')
     parser.add_argument('--tune-hyperparams', action='store_true',

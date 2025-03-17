@@ -12,7 +12,7 @@ from datetime import datetime
 # Import custom modules
 from src.data.data_processor import F1DataProcessor
 from src.features.feature_engineering import F1FeatureEngineer
-from src.models.race_predictor import RacePredictor
+from src.f1predictor.models.race_predictor import RacePredictor
 
 # Setup logging
 logging.basicConfig(

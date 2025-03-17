@@ -1,21 +1,21 @@
-DriverId,FullName,TeamName,GridPosition,Position,FinishTime,FinishStatus,CompletedLaps,DNF,GapToWinner,FormattedGap,FormattedRaceTime,PositionChange,FormattedPositionChange,Points,FastestLap
-VER,Max Verstappen,Red Bull Racing,3.0,1,4733.810246920936,Finished,58,False,0.0,,1:18:53.810,2.0,+2,26,True
-PIA,Oscar Piastri,McLaren,2.0,2,4736.7373346708,Finished,58,False,2.9270877498638583,+2.927s,1:18:56.737,0.0,=,18,False
-HAM,Lewis Hamilton,Ferrari,8.0,3,4753.586618127336,Finished,58,False,19.776371206399745,+19.776s,1:19:13.586,5.0,+5,15,False
-LEC,Charles Leclerc,Ferrari,7.0,4,4776.570652405496,Finished,58,False,42.76040548455967,+42.760s,1:19:36.570,3.0,+3,12,False
-SAI,Carlos Sainz,Williams,10.0,5,4831.606320120575,Finished,58,False,97.79607319963907,+97.796s,1:20:31.606,5.0,+5,10,False
-TSU,Yuki Tsunoda,Racing Bulls,5.0,6,4834.173391352938,Finished,58,False,100.36314443200172,+100.363s,1:20:34.173,-1.0,-1,8,False
-ALB,Alexander Albon,Williams,6.0,7,4860.453257310626,Finished,58,False,126.64301038969006,+126.643s,1:21:00.453,-1.0,-1,6,False
-RUS,George Russell,Mercedes,4.0,8,4862.0866310260935,Finished,58,False,128.27638410515738,+128.276s,1:21:02.086,-4.0,-4,4,False
-ALO,Fernando Alonso,Aston Martin,12.0,9,4888.3103381774845,Finished,58,False,154.50009125654833,+154.500s,1:21:28.310,3.0,+3,2,False
-NOR,Lando Norris,McLaren,1.0,10,4913.708794808988,Finished,58,False,179.89854788805224,+179.899s,1:21:53.708,-9.0,-9,1,False
-GAS,Pierre Gasly,Alpine,9.0,11,4935.483208364952,Finished,58,False,201.67296144401553,+201.673s,1:22:15.483,-2.0,-2,0,False
-STR,Lance Stroll,Aston Martin,13.0,12,4935.665293586274,Finished,58,False,201.8550466653378,+201.855s,1:22:15.665,1.0,+1,0,False
-OCO,Esteban Ocon,Haas F1 Team,19.0,13,4954.104120156006,Finished,58,False,220.29387323506944,+220.294s,1:22:34.104,6.0,+6,0,False
-HAD,Isack Hadjar,Racing Bulls,11.0,14,4995.101403528507,Finished,58,False,261.2911566075709,+261.291s,1:23:15.101,-3.0,-3,0,False
-DOO,Jack Doohan,Alpine,14.0,15,5069.376125678331,Finished,58,False,335.5658787573948,+335.566s,1:24:29.376,-1.0,-1,0,False
-BOR,Gabriel Bortoleto,Kick Sauber,15.0,16,5095.831586552307,Finished,58,False,362.0213396313711,+362.021s,1:24:55.831,-1.0,-1,0,False
-HUL,Nico Hulkenberg,Kick Sauber,17.0,17,5155.761689864813,Finished,58,False,421.9514429438768,+421.951s,1:25:55.761,0.0,=,0,False
-LAW,Liam Lawson,Red Bull Racing,18.0,18,5164.27310441403,Finished,58,False,430.4628574930939,+430.463s,1:26:04.273,0.0,=,0,False
-ANT,Andrea Kimi Antonelli,Mercedes,16.0,19,,DNF (Lap 2),2,True,,DNF,DNF,-3.0,,0,False
-BEA,Oliver Bearman,Haas F1 Team,20.0,20,,DNF (Lap 44),44,True,,DNF,DNF,0.0,,0,False
+DriverId,FullName,TeamName,GridPosition,Position,FinishTime,FinishStatus,CompletedLaps,DNF
+VER,Max Verstappen,Red Bull Racing,3.0,1,4735.317160479962,Finished,58,False
+HAM,Lewis Hamilton,Ferrari,8.0,2,4755.8662034948175,Finished,58,False
+PIA,Oscar Piastri,McLaren,2.0,3,4759.481778370321,Finished,58,False
+LEC,Charles Leclerc,Ferrari,7.0,4,4783.736306873971,Finished,58,False
+SAI,Carlos Sainz,Williams,10.0,5,4834.615337493229,Finished,58,False
+RUS,George Russell,Mercedes,4.0,6,4848.936360661057,Finished,58,False
+ALO,Fernando Alonso,Aston Martin,12.0,7,4885.467439941718,Finished,58,False
+NOR,Lando Norris,McLaren,1.0,8,4902.824158958647,Finished,58,False
+STR,Lance Stroll,Aston Martin,13.0,9,4941.6910945932195,Finished,58,False
+GAS,Pierre Gasly,Alpine,9.0,10,4946.358085312643,Finished,58,False
+OCO,Esteban Ocon,Haas F1 Team,19.0,11,4954.152408341139,Finished,58,False
+HAD,Isack Hadjar,Racing Bulls,11.0,12,4995.41694484298,Finished,58,False
+DOO,Jack Doohan,Alpine,14.0,13,5077.830787959351,Finished,58,False
+BOR,Gabriel Bortoleto,Kick Sauber,15.0,14,5093.971684773556,Finished,58,False
+ANT,Andrea Kimi Antonelli,Mercedes,16.0,15,5114.95208782731,Finished,58,False
+HUL,Nico Hulkenberg,Kick Sauber,17.0,16,5138.836672855731,Finished,58,False
+LAW,Liam Lawson,Red Bull Racing,18.0,17,5171.116960065725,Finished,58,False
+BEA,Oliver Bearman,Haas F1 Team,20.0,18,5223.764906410552,Finished,58,False
+TSU,Yuki Tsunoda,Racing Bulls,5.0,19,,DNF (Lap 54),54,True
+ALB,Alexander Albon,Williams,6.0,20,,DNF (Lap 4),4,True
