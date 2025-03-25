@@ -1,3 +1,5 @@
+import pandas as pd
+
 def _engineer_features(self, data: pd.DataFrame) -> pd.DataFrame:
     """Enhanced feature engineering with more relevant factors."""
     features = pd.DataFrame()
