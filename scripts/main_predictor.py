@@ -765,6 +765,28 @@ def get_track_name_from_event(event_name):
     return event_name
 
 
+def calculate_prediction_metrics(predicted_results, actual_results):
+    """Calculate various metrics to evaluate prediction accuracy."""
+    metrics = {}
+    
+    # Calculate position-based metrics
+    position_diff = abs(predicted_results['Position'] - actual_results['Position'])
+    metrics['MAE'] = position_diff.mean()
+    metrics['MSE'] = (position_diff ** 2).mean()
+    metrics['RMSE'] = np.sqrt(metrics['MSE'])
+    
+    # Calculate exact position matches
+    exact_matches = (predicted_results['Position'] == actual_results['Position']).mean()
+    metrics['ExactPositionAccuracy'] = exact_matches
+    
+    # Calculate top-N accuracy
+    metrics['Top3Accuracy'] = ((position_diff <= 2).sum() / len(position_diff))
+    metrics['Top5Accuracy'] = ((position_diff <= 4).sum() / len(position_diff))
+    metrics['Top10Accuracy'] = ((position_diff <= 9).sum() / len(position_diff))
+    
+    return metrics
+
+
 def main():
     """
     Main prediction pipeline
@@ -783,7 +805,7 @@ def main():
 
     try:
         # Initialize data processor
-        data_processor = F1DataProcessor(current_year=args.year)
+        data_processor = F1DataProcessor(args.year)
 
         # Get race information
         year, race_round, event_name = get_current_race_info(args, data_processor)
@@ -1100,6 +1122,66 @@ def main():
                 plt.close()
                 logger.info(f"Saved pit strategy plot to {pit_strategy_file}")
 
+        # Load actual race results
+        try:
+            logger.info("Loading actual race results...")
+            race_session = data_processor.load_session_data(args.year, args.race, "R")
+            if race_session is not None:
+                actual_results = data_processor.process_actual_race_data(args.year, args.race)
+                if actual_results is not None and not actual_results.empty:
+                    # Create a mapping of predicted to actual results
+                    predicted_positions = pd.DataFrame({
+                        'Driver': race_results['Driver'],
+                        'PredictedPosition': race_results['Position']
+                    })
+                    
+                    actual_positions = pd.DataFrame({
+                        'Driver': actual_results['Driver'],
+                        'ActualPosition': actual_results['Position']
+                    })
+                    
+                    # Merge predicted and actual results
+                    comparison = predicted_positions.merge(
+                        actual_positions,
+                        on='Driver',
+                        how='inner'
+                    )
+                    
+                    if not comparison.empty:
+                        # Calculate metrics
+                        metrics = calculate_prediction_metrics(
+                            comparison[['PredictedPosition']].rename(columns={'PredictedPosition': 'Position'}),
+                            comparison[['ActualPosition']].rename(columns={'ActualPosition': 'Position'})
+                        )
+                        
+                        # Log metrics
+                        logger.info("\nPrediction Metrics:")
+                        logger.info(f"Mean Absolute Error: {metrics['MAE']:.2f} positions")
+                        logger.info(f"Root Mean Square Error: {metrics['RMSE']:.2f} positions")
+                        logger.info(f"Exact Position Accuracy: {metrics['ExactPositionAccuracy']*100:.1f}%")
+                        logger.info(f"Top 3 Accuracy: {metrics['Top3Accuracy']*100:.1f}%")
+                        logger.info(f"Top 5 Accuracy: {metrics['Top5Accuracy']*100:.1f}%")
+                        logger.info(f"Top 10 Accuracy: {metrics['Top10Accuracy']*100:.1f}%")
+                        
+                        # Save metrics to file
+                        metrics_file = os.path.join(run_output_dir, f"metrics_{timestamp}.json")
+                        with open(metrics_file, 'w') as f:
+                            json.dump(metrics, f, indent=2)
+                        logger.info(f"Saved metrics to {metrics_file}")
+                        
+                        # Save comparison to file
+                        comparison_file = os.path.join(run_output_dir, f"comparison_{timestamp}.csv")
+                        comparison.to_csv(comparison_file, index=False)
+                        logger.info(f"Saved position comparison to {comparison_file}")
+                    else:
+                        logger.warning("No matching drivers found between predicted and actual results")
+                else:
+                    logger.warning("Could not process actual race results")
+            else:
+                logger.warning("Could not load actual race session data")
+        except Exception as e:
+            logger.error(f"Error loading actual race results: {e}")
+        
         logger.info("F1 Race Prediction completed successfully")
         logger.info(f"Results saved to {results_file}")
 

@@ -406,3 +406,86 @@ def _fill_missing_values(self, data):
         filled_data["Track_Type"] = filled_data["Track_Type"].fillna("permanent")
 
     return filled_data
+
+
+def process_race_data(self, year: int, race: int) -> pd.DataFrame:
+    """Process race data for a specific year and race."""
+    results = self.load_session_data(year, race, 'R')
+    if results is None:
+        return None
+
+    print("Results DataFrame columns:", results.columns.tolist())
+    print("\nResults DataFrame head:")
+    print(results.head())
+    print("\nResults DataFrame dtypes:")
+    print(results.dtypes)
+    print("\nResults DataFrame info:")
+    results.info()
+
+    # Create a copy to avoid modifying the original
+    race_df = results.copy()
+
+    # Try different possible column names for grid position
+    grid_pos_columns = ['GridPosition', 'grid', 'GridPos', 'StartingGrid', 'Position', 'Q1', 'Q2', 'Q3', 'QualifyingPosition']
+    grid_pos_col = None
+    for col in grid_pos_columns:
+        if col in race_df.columns:
+            grid_pos_col = col
+            print(f"Using {col} for grid positions")
+            break
+
+    if grid_pos_col is None:
+        print("No grid position column found in:", race_df.columns.tolist())
+        return None
+
+    # Ensure numeric types for relevant columns
+    for col in [grid_pos_col, 'Position']:
+        if col in race_df.columns:
+            race_df[col] = pd.to_numeric(race_df[col], errors='coerce')
+
+    return race_df
+
+
+def process_actual_race_data(self, year: int, race: int) -> pd.DataFrame:
+    """Process actual race data for a specific year and race."""
+    # First, get the qualifying data to get grid positions
+    quali_data = self.load_session_data(year, race, 'Q')
+    if quali_data is None:
+        print("Could not load qualifying data")
+        return None
+
+    # Get race results
+    race_data = self.load_session_data(year, race, 'R')
+    if race_data is None:
+        print("Could not load race data")
+        return None
+
+    print("Race DataFrame columns:", race_data.columns.tolist())
+    print("\nRace DataFrame head:")
+    print(race_data.head())
+
+    # Create a mapping of driver numbers to their qualifying positions
+    quali_positions = {}
+    if 'DriverNumber' in quali_data.columns and 'Position' in quali_data.columns:
+        for _, row in quali_data.iterrows():
+            quali_positions[str(row['DriverNumber'])] = row['Position']
+
+    # Create a new DataFrame with the required columns
+    result_df = pd.DataFrame()
+    
+    # Add required columns from race data
+    columns_to_copy = ['DriverNumber', 'Position', 'Status', 'Points', 'Driver', 'Team']
+    for col in columns_to_copy:
+        if col in race_data.columns:
+            result_df[col] = race_data[col]
+
+    # Add grid positions from qualifying data
+    result_df['GridPosition'] = result_df['DriverNumber'].astype(str).map(quali_positions)
+
+    # Convert numeric columns
+    numeric_columns = ['Position', 'GridPosition', 'Points']
+    for col in numeric_columns:
+        if col in result_df.columns:
+            result_df[col] = pd.to_numeric(result_df[col], errors='coerce')
+
+    return result_df

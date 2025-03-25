@@ -8,6 +8,7 @@ import seaborn as sns
 import os
 from datetime import timedelta, datetime
 import sys
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 from .performance_adjustments import apply_all_adjustments
 
@@ -123,6 +124,9 @@ class RacePredictor:
             track_name: Name of the track for the race
             weather_conditions: Dict with weather data (temp, humidity, rain_chance, etc.)
         """
+        # Store original qualifying data for metrics calculation
+        original_qualifying = qualifying_data.copy()
+        
         # Make a copy of qualifying data to ensure we don't modify it
         qualifying_copy = qualifying_data.copy()
         
@@ -680,6 +684,13 @@ class RacePredictor:
         # Sort by position
         results = results.sort_values("Position")
 
+        # Calculate prediction metrics if we have actual results
+        if 'ActualPosition' in original_qualifying.columns:
+            actual_results = original_qualifying[['Driver', 'ActualPosition']].rename(
+                columns={'ActualPosition': 'Position'}
+            )
+            self.calculate_prediction_metrics(actual_results, results)
+        
         return results
 
     def _format_time_gap(self, gap_seconds):
@@ -1647,6 +1658,89 @@ class RacePredictor:
             degradation[idx] = base_rate
 
         return degradation
+
+    def calculate_prediction_metrics(self, actual_results, predicted_results):
+        """
+        Calculate prediction metrics comparing actual vs predicted results.
+        
+        Args:
+            actual_results: DataFrame with actual race results
+            predicted_results: DataFrame with predicted race results
+            
+        Returns:
+            dict: Dictionary containing various prediction metrics
+        """
+        try:
+            # Ensure both DataFrames have Position column
+            if 'Position' not in actual_results.columns or 'Position' not in predicted_results.columns:
+                return None
+                
+            # Merge actual and predicted results on Driver
+            merged_results = actual_results.merge(
+                predicted_results[['Driver', 'Position']], 
+                on='Driver', 
+                suffixes=('_actual', '_predicted')
+            )
+            
+            if merged_results.empty:
+                return None
+                
+            # Calculate metrics
+            mae = mean_absolute_error(
+                merged_results['Position_actual'], 
+                merged_results['Position_predicted']
+            )
+            mse = mean_squared_error(
+                merged_results['Position_actual'], 
+                merged_results['Position_predicted']
+            )
+            rmse = np.sqrt(mse)
+            r2 = r2_score(
+                merged_results['Position_actual'], 
+                merged_results['Position_predicted']
+            )
+            
+            # Calculate position accuracy (exact matches)
+            position_accuracy = np.mean(
+                merged_results['Position_actual'] == merged_results['Position_predicted']
+            )
+            
+            # Calculate top-10 accuracy
+            top_10_actual = merged_results['Position_actual'] <= 10
+            top_10_predicted = merged_results['Position_predicted'] <= 10
+            top_10_accuracy = np.mean(top_10_actual == top_10_predicted)
+            
+            # Calculate podium accuracy (top 3)
+            podium_actual = merged_results['Position_actual'] <= 3
+            podium_predicted = merged_results['Position_predicted'] <= 3
+            podium_accuracy = np.mean(podium_actual == podium_predicted)
+            
+            metrics = {
+                'MAE': mae,
+                'MSE': mse,
+                'RMSE': rmse,
+                'R2': r2,
+                'Position_Accuracy': position_accuracy,
+                'Top_10_Accuracy': top_10_accuracy,
+                'Podium_Accuracy': podium_accuracy
+            }
+            
+            # Print metrics in a formatted way
+            print("\n═══════════════════ PREDICTION METRICS ═══════════════════")
+            print(f"Mean Absolute Error (MAE): {mae:.2f} positions")
+            print(f"Mean Squared Error (MSE): {mse:.2f}")
+            print(f"Root Mean Squared Error (RMSE): {rmse:.2f}")
+            print(f"R² Score: {r2:.4f}")
+            print(f"Exact Position Accuracy: {position_accuracy:.2%}")
+            print(f"Top-10 Prediction Accuracy: {top_10_accuracy:.2%}")
+            print(f"Podium Prediction Accuracy: {podium_accuracy:.2%}")
+            print("═════════════════════════════════════════════════════════")
+            
+            return metrics
+            
+        except Exception as e:
+            logger.error(f"Error calculating prediction metrics: {e}")
+            return None
 
 
 def print_race_results(results_df):

@@ -3,6 +3,7 @@ import numpy as np
 from sklearn.preprocessing import StandardScaler
 import logging
 import random
+import math
 
 logger = logging.getLogger("F1Predictor.Features")
 
@@ -11,109 +12,270 @@ class F1FeatureEngineer:
     def __init__(self):
         """Initialize the feature engineer"""
         self.scaler = StandardScaler()
+        
+        # Track characteristics weights
+        self.track_weights = {
+            'high_speed': {
+                'straight_speed': 0.6,
+                'corner_speed': 0.4,
+                'tire_management': 0.3,
+                'brake_management': 0.2
+            },
+            'technical': {
+                'straight_speed': 0.3,
+                'corner_speed': 0.7,
+                'tire_management': 0.4,
+                'brake_management': 0.5
+            },
+            'street': {
+                'straight_speed': 0.4,
+                'corner_speed': 0.6,
+                'tire_management': 0.5,
+                'brake_management': 0.6
+            }
+        }
+        
+        # Weather impact factors
+        self.weather_impact = {
+            'temperature': {
+                'tire_performance': 0.4,
+                'engine_performance': 0.3,
+                'driver_performance': 0.3
+            },
+            'humidity': {
+                'engine_performance': 0.4,
+                'tire_performance': 0.3,
+                'brake_performance': 0.3
+            },
+            'wind': {
+                'straight_speed': 0.5,
+                'corner_stability': 0.5
+            }
+        }
 
-    def calculate_team_performance(self, prediction_data):
-        """
-        Calculate team performance metrics based on historical and current data
-
-        Args:
-            prediction_data: Dictionary with prediction data from F1DataProcessor
-
-        Returns:
-            DataFrame with team performance metrics
-        """
+    def calculate_team_performance(self, historical_data, current_data):
+        """Calculate team performance metrics based on historical and current data."""
         try:
-            # Extract race results from historical data
-            historical_races = prediction_data["historical"]["race"]
-            if historical_races.empty:
-                logger.warning("No historical race data available for team performance calculation")
+            if historical_data is None or historical_data.empty:
+                logger.warning("No historical data available")
                 return pd.DataFrame()
 
-            # Get current constructor standings
+            team_metrics = []
+
+            # Enhanced team-specific characteristics
+            team_characteristics = {
+                "McLaren": {
+                    "quali_strength": 1.12,      # Strong qualifying pace
+                    "race_consistency": 1.10,    # Very consistent in races
+                    "development_rate": 1.15,    # Strong development trajectory
+                    "tire_management": 1.08,     # Good tire management
+                    "reliability": 0.98          # Slight reliability concerns
+                },
+                "Red Bull Racing": {
+                    "quali_strength": 1.10,      # Very strong qualifying
+                    "race_consistency": 1.15,    # Excellent race consistency
+                    "development_rate": 1.12,    # Strong development
+                    "tire_management": 1.12,     # Excellent tire management
+                    "reliability": 1.05          # High reliability
+                },
+                "Ferrari": {
+                    "quali_strength": 1.15,      # Exceptional qualifying pace
+                    "race_consistency": 0.95,    # Some race consistency issues
+                    "development_rate": 1.08,    # Good development rate
+                    "tire_management": 0.95,     # Tire management challenges
+                    "reliability": 0.92          # Reliability concerns
+                },
+                "Mercedes": {
+                    "quali_strength": 1.05,      # Good qualifying pace
+                    "race_consistency": 1.08,    # Strong race consistency
+                    "development_rate": 1.10,    # Good development rate
+                    "tire_management": 1.05,     # Good tire management
+                    "reliability": 1.02          # Reliable
+                }
+            }
+
+            team_results = historical_data.groupby("TeamName")
+
+            for team_name, results in team_results:
+                if current_data.get("data_processor"):
+                    team_name = current_data["data_processor"].standardize_team_name(team_name)
+
+                # Get team-specific characteristics
+                team_chars = team_characteristics.get(team_name, {
+                    "quali_strength": 1.0,
+                    "race_consistency": 1.0,
+                    "development_rate": 1.0,
+                    "tire_management": 1.0,
+                    "reliability": 1.0
+                })
+
+                # Enhanced performance metrics
+                finished_races = results[results["Status"] == "Finished"]
+                
+                # Position-based metrics with team-specific adjustments
+                avg_position = finished_races["Position"].astype(float).mean()
+                position_consistency = finished_races["Position"].std() if len(finished_races) > 1 else 5.0
+                
+                # Adjust position metrics with team characteristics
+                avg_position = avg_position / team_chars["race_consistency"]
+                position_consistency = position_consistency / team_chars["race_consistency"]
+                
+                # Reliability metrics with team-specific adjustments
+                total_races = len(results)
+                finished_count = len(finished_races)
+                base_reliability = finished_count / total_races if total_races > 0 else 0.85
+                reliability = base_reliability * team_chars["reliability"]
+                
+                # DNF analysis with team-specific consideration
+                dnf_races = results[results["Status"] != "Finished"]
+                mechanical_dnfs = dnf_races[dnf_races["Status"].str.contains("Technical|Engine|Gearbox|Hydraulics", na=False)].shape[0]
+                mechanical_reliability = (1 - (mechanical_dnfs / total_races if total_races > 0 else 0.1)) * team_chars["reliability"]
+                
+                # Development trend with team-specific rate
+                if len(finished_races) >= 4:
+                    recent_races = finished_races.iloc[-2:]["Position"].mean()
+                    earlier_races = finished_races.iloc[:-2]["Position"].mean()
+                    development_trend = ((earlier_races - recent_races) / 20) * team_chars["development_rate"]
+                else:
+                    development_trend = 0
+                
+                # Current season performance
+                team_points = 0
+                if "constructor_standings" in current_data and not current_data["constructor_standings"].empty:
+                    team_row = current_data["constructor_standings"][current_data["constructor_standings"]["TeamName"] == team_name]
+                    if not team_row.empty:
+                        team_points = team_row.iloc[0]["Points"]
+
+                # Calculate comprehensive team strength with characteristics
+                base_strength = (
+                    (1 - avg_position / 20) * 0.3 +
+                    reliability * 0.2 +
+                    (1 - position_consistency / 10) * 0.15 +
+                    mechanical_reliability * 0.15 +
+                    development_trend * 0.1 +
+                    (team_points / 100) * 0.1  # Normalized points contribution
+                )
+
+                # Apply team-specific adjustments
+                team_strength = base_strength * team_chars["quali_strength"] * team_chars["tire_management"]
+
+                team_metrics.append({
+                    "TeamName": team_name,
+                    "AvgPosition": avg_position,
+                    "PositionConsistency": position_consistency,
+                    "Reliability": reliability,
+                    "MechanicalReliability": mechanical_reliability,
+                    "DevelopmentTrend": development_trend,
+                    "CurrentPoints": team_points,
+                    "TeamStrength": team_strength
+                })
+
+            return pd.DataFrame(team_metrics)
+
+        except Exception as e:
+            logger.error(f"Error calculating team performance: {e}")
+            return pd.DataFrame()
+
+    def calculate_team_performance(self, prediction_data):
+        """Enhanced team performance calculation with more detailed metrics"""
+        try:
+            historical_races = prediction_data["historical"]["race"]
+            if historical_races.empty:
+                logger.warning("No historical race data available")
+                return pd.DataFrame()
+
             constructor_standings = prediction_data["constructor_standings"]
             if constructor_standings is None or constructor_standings.empty:
                 logger.warning("No constructor standings available")
                 return pd.DataFrame()
 
-            # Calculate team performance metrics
             team_metrics = []
 
-            # Group historical races by team
             team_results = historical_races.groupby("TeamName")
 
             for team_name, results in team_results:
-                # Standardize team name
                 if prediction_data.get("data_processor"):
                     team_name = prediction_data["data_processor"].standardize_team_name(team_name)
-                else:
-                    # Fallback team name mapping if no data processor
-                    team_name_mapping = {
-                        "Racing Bulls": "Visa Cash App Racing Bulls F1 Team",
-                        "Visa Cash App RB": "Visa Cash App Racing Bulls F1 Team",
-                        "RB": "Visa Cash App Racing Bulls F1 Team",
-                    }
-                    team_name = team_name_mapping.get(team_name, team_name)
 
-                # Calculate average finish position
-                if "Status" in results.columns:
-                    finished_races = results[results["Status"] == "Finished"]
-                else:
-                    # Fallback to using DNF column
-                    finished_races = results[~results["DNF"]]
-
+                # Enhanced performance metrics
+                finished_races = results[results["Status"] == "Finished"]
+                
+                # Position-based metrics
                 avg_position = finished_races["Position"].astype(float).mean()
-
-                # Calculate reliability (percentage of finishes)
+                position_consistency = finished_races["Position"].std() if len(finished_races) > 1 else 5.0
+                
+                # Reliability metrics
                 total_races = len(results)
-                if "Status" in results.columns:
-                    finished_count = len(results[results["Status"] == "Finished"])
+                finished_count = len(finished_races)
+                reliability = finished_count / total_races if total_races > 0 else 0.85
+                
+                # DNF analysis
+                dnf_races = results[results["Status"] != "Finished"]
+                mechanical_dnfs = dnf_races[dnf_races["Status"].str.contains("Technical|Engine|Gearbox|Hydraulics", na=False)].shape[0]
+                mechanical_reliability = 1 - (mechanical_dnfs / total_races if total_races > 0 else 0.1)
+                
+                # Pace metrics
+                if "MedianLapTime" in results.columns:
+                    avg_pace = results["MedianLapTime"].dropna().mean()
+                    pace_consistency = results["MedianLapTime"].dropna().std() if len(results["MedianLapTime"].dropna()) > 1 else 1.0
                 else:
-                    finished_count = len(results[~results["DNF"]])
-                reliability = finished_count / total_races if total_races > 0 else 0
-
-                # Calculate average pace (median lap time)
-                avg_pace = (
-                    results["MedianLapTime"].dropna().mean()
-                    if "MedianLapTime" in results.columns
-                    else np.nan
-                )
-
-                # Get current season points
+                    avg_pace = np.nan
+                    pace_consistency = np.nan
+                
+                # Development trend (comparing recent races to earlier ones)
+                if len(finished_races) >= 4:
+                    recent_races = finished_races.iloc[-2:]["Position"].mean()
+                    earlier_races = finished_races.iloc[:-2]["Position"].mean()
+                    development_trend = (earlier_races - recent_races) / 20  # Normalized to -1 to 1
+                else:
+                    development_trend = 0
+                
+                # Current season performance
                 team_points = 0
                 if not constructor_standings.empty:
                     team_row = constructor_standings[constructor_standings["TeamName"] == team_name]
                     if not team_row.empty:
                         team_points = team_row.iloc[0]["Points"]
 
-                team_metrics.append(
-                    {
-                        "TeamName": team_name,
-                        "AvgPosition": avg_position,
-                        "Reliability": reliability,
-                        "AvgPace": avg_pace,
-                        "CurrentPoints": team_points,
-                    }
-                )
+                # Calculate comprehensive team strength
+                team_metrics.append({
+                    "TeamName": team_name,
+                    "AvgPosition": avg_position,
+                    "PositionConsistency": position_consistency,
+                    "Reliability": reliability,
+                    "MechanicalReliability": mechanical_reliability,
+                    "AvgPace": avg_pace,
+                    "PaceConsistency": pace_consistency,
+                    "DevelopmentTrend": development_trend,
+                    "CurrentPoints": team_points
+                })
 
             team_df = pd.DataFrame(team_metrics)
 
-            # Fill missing values with sensible defaults
-            team_df["AvgPosition"].fillna(10, inplace=True)  # Midfield position
-            team_df["Reliability"].fillna(0.85, inplace=True)  # Average reliability
+            # Fill missing values
+            team_df["AvgPosition"].fillna(10, inplace=True)
+            team_df["PositionConsistency"].fillna(5, inplace=True)
+            team_df["Reliability"].fillna(0.85, inplace=True)
+            team_df["MechanicalReliability"].fillna(0.9, inplace=True)
             team_df["AvgPace"].fillna(team_df["AvgPace"].mean(), inplace=True)
+            team_df["PaceConsistency"].fillna(1.0, inplace=True)
+            team_df["DevelopmentTrend"].fillna(0, inplace=True)
 
-            # Normalize team performance metrics
+            # Calculate normalized metrics
             if not team_df.empty:
-                team_df["NormalizedPace"] = (
-                    (team_df["AvgPace"] - team_df["AvgPace"].min())
-                    / (team_df["AvgPace"].max() - team_df["AvgPace"].min())
-                    if team_df["AvgPace"].max() != team_df["AvgPace"].min()
-                    else 0.5
-                )
+                # Normalize pace (lower is better)
+                team_df["NormalizedPace"] = (team_df["AvgPace"] - team_df["AvgPace"].min()) / (team_df["AvgPace"].max() - team_df["AvgPace"].min()) if team_df["AvgPace"].max() != team_df["AvgPace"].min() else 0.5
+                
+                # Normalize consistency (lower is better)
+                team_df["NormalizedConsistency"] = 1 - (team_df["PositionConsistency"] / team_df["PositionConsistency"].max())
+                
+                # Calculate comprehensive team strength with weighted factors
                 team_df["TeamStrength"] = (
-                    (1 - team_df["NormalizedPace"]) * 0.5
-                    + team_df["Reliability"] * 0.3
-                    + (1 - team_df["AvgPosition"] / 20) * 0.2
+                    (1 - team_df["NormalizedPace"]) * 0.35 +  # Pace
+                    team_df["Reliability"] * 0.20 +            # Overall reliability
+                    team_df["MechanicalReliability"] * 0.15 +  # Mechanical reliability
+                    team_df["NormalizedConsistency"] * 0.15 +  # Consistency
+                    team_df["DevelopmentTrend"] * 0.15         # Recent development
                 )
 
             return team_df
@@ -121,118 +283,252 @@ class F1FeatureEngineer:
             logger.error(f"Error calculating team performance: {e}")
             return pd.DataFrame()
 
-    def process_driver_statistics(self, prediction_data):
-        """
-        Process driver statistics for feature engineering
-
-        Args:
-            prediction_data: Dictionary with prediction data from F1DataProcessor
-
-        Returns:
-            DataFrame with processed driver statistics
-        """
-        try:
-            # Extract driver statistics
-            driver_stats = prediction_data["driver_stats"]
-            if driver_stats.empty:
-                logger.warning("No driver statistics available")
-                return pd.DataFrame()
-
-            # Get current driver standings
-            driver_standings = prediction_data["driver_standings"]
-
-            # Process each driver's statistics
-            processed_stats = []
-
-            # Group by driver and get most recent year's data
-            for driver_id, stats in driver_stats.groupby("DriverId"):
-                # Sort by year to get the most recent stats
-                stats = stats.sort_values("Year", ascending=False)
-                recent_stats = stats.iloc[0]
-
-                # Get current season points and position
-                current_points = 0
-                current_position = 20  # Default to last
-
-                if driver_standings is not None and not driver_standings.empty:
-                    driver_row = driver_standings[driver_standings["Abbreviation"] == driver_id]
-                    if not driver_row.empty:
-                        current_points = driver_row.iloc[0]["Points"]
-                        current_position = driver_row.iloc[0]["Position"]
-
-                # Calculate driver form (weighted average of stats)
-                dnf_penalty = 1 - recent_stats["DNFRate"]  # Lower DNF rate is better
-                position_factor = (
-                    1 - min(recent_stats["AverageFinish"], 20) / 20
-                    if pd.notna(recent_stats["AverageFinish"])
-                    else 0.5
-                )
-                improvement = (
-                    recent_stats["AverageImprovement"] / 5
-                    if pd.notna(recent_stats["AverageImprovement"])
-                    else 0
-                )
-
-                # Cap improvement factor between 0 and 1
-                improvement = max(0, min(1, improvement + 0.5))
-
-                # Calculate driver form (weighted score)
-                driver_form = dnf_penalty * 0.3 + position_factor * 0.5 + improvement * 0.2
-
-                processed_stats.append(
-                    {
-                        "DriverId": driver_id,
-                        "FullName": recent_stats["FullName"],
-                        "TeamName": recent_stats["TeamName"],
-                        "CurrentPoints": current_points,
-                        "CurrentPosition": current_position,
-                        "RacesCompleted": recent_stats["RacesCompleted"],
-                        "DNFRate": recent_stats["DNFRate"],
-                        "AverageFinish": recent_stats["AverageFinish"],
-                        "AverageGrid": recent_stats["AverageGrid"],
-                        "AverageImprovement": recent_stats["AverageImprovement"],
-                        "DriverForm": driver_form,
-                    }
-                )
-
-            return pd.DataFrame(processed_stats)
-        except Exception as e:
-            logger.error(f"Error processing driver statistics: {e}")
+    def process_driver_statistics(self, driver_data, team_metrics=None, circuit_name=None):
+        """Process driver statistics for feature engineering with enhanced metrics."""
+        if driver_data.empty:
+            logging.warning("No driver statistics available")
             return pd.DataFrame()
 
+        # Get team strength if available
+        team_name = driver_data['Team'].iloc[0] if 'Team' in driver_data.columns else None
+        team_strength = 1.0
+        if team_metrics and team_name and team_name in team_metrics:
+            team_strength = team_metrics[team_name]['TeamStrength']
+
+        # Calculate recent form (last 3 races)
+        recent_races = driver_data.sort_values('RoundNumber', ascending=False).head(3)
+        
+        # Calculate weighted recent performance
+        if not recent_races.empty:
+            weights = np.exp(-0.5 * np.arange(len(recent_races)))  # Stronger exponential decay
+            weighted_positions = np.average(
+                recent_races['Position'],
+                weights=weights,
+                axis=0
+            )
+        else:
+            weighted_positions = driver_data['Position'].mean()
+
+        # Calculate DNF rate with exponential penalty
+        total_races = len(driver_data)
+        finished_races = len(driver_data[driver_data['Status'] == 'Finished'])
+        dnf_rate = 1 - (finished_races / total_races)
+        dnf_penalty = math.exp(dnf_rate) - 1  # Exponential penalty for high DNF rates
+
+        # Calculate qualifying performance
+        quali_positions = driver_data['GridPosition'].mean()
+        recent_quali = recent_races['GridPosition'].mean() if not recent_races.empty else quali_positions
+        
+        # Calculate qualifying vs race performance
+        quali_vs_race = driver_data.apply(
+            lambda x: x['GridPosition'] - x['Position'], axis=1
+        ).mean()
+
+        # Calculate race craft score with emphasis on recent races
+        recent_position_changes = recent_races.apply(
+            lambda x: x['GridPosition'] - x['Position'], axis=1
+        )
+        overall_position_changes = driver_data.apply(
+            lambda x: x['GridPosition'] - x['Position'], axis=1
+        )
+        
+        recent_race_craft = recent_position_changes.mean() if not recent_position_changes.empty else 0
+        overall_race_craft = overall_position_changes.mean()
+        race_craft = 0.7 * recent_race_craft + 0.3 * overall_race_craft
+        
+        # Calculate consistency scores
+        recent_consistency = 1 / (recent_races['Position'].std() + 1) if not recent_races.empty else 0
+        overall_consistency = 1 / (driver_data['Position'].std() + 1)
+        consistency_score = 0.7 * recent_consistency + 0.3 * overall_consistency
+
+        # Calculate wet weather performance if available
+        wet_races = driver_data[driver_data['WetRace'] == True] if 'WetRace' in driver_data.columns else pd.DataFrame()
+        wet_performance = 0
+        if not wet_races.empty:
+            wet_positions = wet_races['Position'].mean()
+            dry_positions = driver_data[driver_data['WetRace'] == False]['Position'].mean()
+            wet_performance = dry_positions - wet_positions  # Positive means better in wet
+
+        # Calculate track-specific performance
+        track_performance = 0
+        if circuit_name:
+            track_races = driver_data[driver_data['Circuit'] == circuit_name]
+            if not track_races.empty:
+                track_performance = 1 - (track_races['Position'].mean() / 20)
+            else:
+                track_performance = 1 - (weighted_positions / 20)
+
+        # Calculate current form metrics
+        current_points = recent_races['Points'].sum() if not recent_races.empty else 0
+        current_position = recent_races['Position'].iloc[0] if not recent_races.empty else 20
+        points_trend = recent_races['Points'].mean() - driver_data['Points'].mean() if not recent_races.empty else 0
+
+        # Combine all factors into driver form
+        base_form = (
+            0.25 * (1 - weighted_positions / 20) +  # Recent weighted performance
+            0.20 * (1 - dnf_penalty) +              # Reliability
+            0.15 * consistency_score +              # Consistency
+            0.15 * (race_craft / 10 + 0.5) +       # Race craft (normalized)
+            0.10 * (quali_vs_race / 20 + 0.5) +    # Qualifying vs Race performance
+            0.10 * (track_performance + 0.5) +      # Track-specific performance
+            0.05 * (wet_performance / 20 + 0.5)     # Wet weather performance
+        )
+
+        # Apply team context
+        driver_form = base_form * (0.7 + 0.3 * team_strength)  # Blend individual and team performance
+
+        # Create feature dictionary
+        features = {
+            'ReliabilityScore': 1 - dnf_penalty,
+            'WeightedAvgFinish': weighted_positions,
+            'RecentQualiPerformance': recent_quali,
+            'QualiRaceGap': quali_vs_race,
+            'RaceCraftScore': race_craft,
+            'ConsistencyScore': consistency_score,
+            'WetPerformance': wet_performance,
+            'TrackPerformance': track_performance,
+            'CurrentPoints': current_points,
+            'PointsTrend': points_trend,
+            'CurrentPosition': current_position,
+            'TeamStrength': team_strength,
+            'DriverForm': driver_form
+        }
+
+        return pd.DataFrame([features])
+
     def get_track_characteristics(self, circuit_name, historical_data):
-        """
-        Extract track characteristics using real historical data
-
-        Args:
-            circuit_name: Name of the circuit
-            historical_data: DataFrame with historical race data
-
-        Returns:
-            Dictionary with track characteristics
-        """
+        """Enhanced track characteristics calculation with more detailed features"""
         try:
-            # Real track characteristics based on historical data
+            # Get base track type and characteristics
+            track_type = self._determine_track_type(circuit_name)
+            track_length = self._get_track_length(circuit_name)
+            track_elevation = self._get_track_elevation(circuit_name)
+            
+            # Get dynamic characteristics based on historical data
+            overtaking_difficulty = self._calculate_overtaking_difficulty(circuit_name, historical_data)
+            tire_degradation = self._calculate_tire_degradation(circuit_name, historical_data)
+            drs_effectiveness = self._calculate_drs_effectiveness(circuit_name, historical_data)
+            
+            # Get weather-related characteristics
+            weather_conditions = self._get_weather_conditions(circuit_name)
+            typical_temperature = self._get_typical_temperature(circuit_name)
+            typical_humidity = self._get_typical_humidity(circuit_name)
+            typical_wind = self._get_typical_wind_speed(circuit_name)
+            wet_conditions = self._get_typical_wet_conditions(circuit_name)
+            
+            # Calculate sector characteristics
+            sector_types = self._get_sector_characteristics(circuit_name)
+            
+            # Calculate track-specific performance factors
+            track_factors = {}
+            
+            # Apply track type weights
+            if track_type in self.track_weights:
+                weights = self.track_weights[track_type]
+                track_factors.update(weights)
+            else:
+                # Use balanced weights as default
+                track_factors.update({
+                    'straight_speed': 0.5,
+                    'corner_speed': 0.5,
+                    'tire_management': 0.4,
+                    'brake_management': 0.4
+                })
+            
+            # Adjust weights based on track characteristics
+            if track_length > 5.5:  # Long track
+                track_factors['straight_speed'] *= 1.2
+                track_factors['tire_management'] *= 1.1
+            elif track_length < 4.5:  # Short track
+                track_factors['corner_speed'] *= 1.2
+                track_factors['brake_management'] *= 1.1
+                
+            # Adjust for elevation changes
+            if track_elevation > 50:  # Significant elevation changes
+                track_factors['engine_performance'] = 0.6
+                track_factors['brake_management'] *= 1.2
+            
+            # Weather impact adjustments
+            weather_factors = {}
+            if typical_temperature > 30:  # Hot conditions
+                weather_factors.update({
+                    'tire_degradation': tire_degradation * 1.3,
+                    'engine_stress': 0.7,
+                    'physical_demand': 0.8
+                })
+            elif typical_temperature < 15:  # Cold conditions
+                weather_factors.update({
+                    'tire_warmup': 0.7,
+                    'grip_level': 0.8
+                })
+                
+            if typical_humidity > 70:  # High humidity
+                weather_factors['engine_performance'] = weather_factors.get('engine_performance', 1.0) * 0.9
+            
+            # Combine all characteristics
             track_characteristics = {
-                "CircuitName": circuit_name,
-                "TrackType": self._determine_track_type(circuit_name),
-                "TrackLength": self._get_track_length(circuit_name),
-                "TrackElevation": self._get_track_elevation(circuit_name),
-                "OvertakingDifficulty": self._calculate_overtaking_difficulty(
-                    circuit_name, historical_data
-                ),
-                "TireDegradation": self._calculate_tire_degradation(circuit_name, historical_data),
-                "DRSEffectiveness": self._calculate_drs_effectiveness(
-                    circuit_name, historical_data
-                ),
-                "WeatherConditions": self._get_weather_conditions(circuit_name),
+                'circuit_name': circuit_name,
+                'track_type': track_type,
+                'track_length': track_length,
+                'track_elevation': track_elevation,
+                'overtaking_difficulty': overtaking_difficulty,
+                'tire_degradation': tire_degradation,
+                'drs_effectiveness': drs_effectiveness,
+                'typical_temperature': typical_temperature,
+                'typical_humidity': typical_humidity,
+                'typical_wind': typical_wind,
+                'wet_probability': wet_conditions,
+                'sector_characteristics': sector_types,
+                'performance_factors': track_factors,
+                'weather_impact': weather_factors
             }
-
+            
+            # Calculate overall difficulty score
+            difficulty_score = (
+                overtaking_difficulty * 0.3 +
+                tire_degradation * 0.25 +
+                (1 - drs_effectiveness) * 0.15 +
+                (track_elevation / 100) * 0.15 +
+                (wet_conditions) * 0.15
+            )
+            track_characteristics['difficulty_score'] = min(1.0, difficulty_score)
+            
             return track_characteristics
-
+            
         except Exception as e:
-            self.logger.error(f"Error getting track characteristics: {str(e)}")
+            logger.error(f"Error calculating track characteristics: {e}")
             return self._get_default_track_characteristics()
+            
+    def _get_sector_characteristics(self, circuit_name):
+        """Calculate sector-specific characteristics"""
+        # Define sector characteristics for known circuits
+        sector_data = {
+            'Bahrain': {
+                'S1': {'type': 'technical', 'corners': 4, 'key_feature': 'heavy_braking'},
+                'S2': {'type': 'high_speed', 'corners': 6, 'key_feature': 'flowing_corners'},
+                'S3': {'type': 'mixed', 'corners': 5, 'key_feature': 'traction_zones'}
+            },
+            'Saudi Arabia': {
+                'S1': {'type': 'high_speed', 'corners': 7, 'key_feature': 'walls'},
+                'S2': {'type': 'technical', 'corners': 8, 'key_feature': 'precision'},
+                'S3': {'type': 'high_speed', 'corners': 5, 'key_feature': 'slipstream'}
+            },
+            'Australia': {
+                'S1': {'type': 'mixed', 'corners': 5, 'key_feature': 'chicanes'},
+                'S2': {'type': 'high_speed', 'corners': 4, 'key_feature': 'flowing'},
+                'S3': {'type': 'technical', 'corners': 7, 'key_feature': 'stop_start'}
+            }
+        }
+        
+        # Return default characteristics if circuit not known
+        if circuit_name not in sector_data:
+            return {
+                'S1': {'type': 'mixed', 'corners': 5, 'key_feature': 'standard'},
+                'S2': {'type': 'mixed', 'corners': 5, 'key_feature': 'standard'},
+                'S3': {'type': 'mixed', 'corners': 5, 'key_feature': 'standard'}
+            }
+            
+        return sector_data[circuit_name]
 
     def _determine_track_type(self, circuit_name):
         """
@@ -992,12 +1288,7 @@ class F1FeatureEngineer:
 
         # Calculate race pace score
         features["RacePaceScore"] = features.apply(
-            lambda x: self._calculate_race_pace(
-                x["QualifyingPerformance"],
-                x["TeamName"],
-                track_info if isinstance(track_info, dict) else {},
-                historical_race_data,
-            ),
+            lambda x: self._calculate_race_pace(x),
             axis=1,
         )
 
@@ -1126,261 +1417,139 @@ class F1FeatureEngineer:
             logger.error(f"Error calculating DNF probability: {e}")
             return 0.0005  # Return base DNF probability in case of error
 
-    def _get_driver_race_pace_factor(self, driver_id, team_name, historical_data):
-        """
-        Calculate driver-specific race pace factor based on historical performance
-
-        Args:
-            driver_id: Driver identifier
-            team_name: Team name
-            historical_data: Historical race data
-
-        Returns:
-            float: Driver race pace factor (0-1)
-        """
-        try:
-            if historical_data is None or historical_data.empty:
-                return 0.5  # Default neutral value
-
-            # Get driver's historical races
-            driver_races = historical_data[historical_data["DriverId"] == driver_id]
-            if driver_races.empty:
-                return 0.5
-
-            # Calculate race pace vs qualifying pace ratio
-            if "QualifyingPosition" in driver_races.columns and "Position" in driver_races.columns:
-                avg_qual_pos = driver_races["QualifyingPosition"].mean()
-                avg_race_pos = driver_races["Position"].mean()
-                position_improvement = avg_qual_pos - avg_race_pos
-
-                # Normalize position improvement to 0-1 scale
-                position_factor = (
-                    position_improvement + 10
-                ) / 20  # Assuming max improvement of 10 positions
-                position_factor = max(0.0, min(1.0, position_factor))
-            else:
-                position_factor = 0.5
-
-            # Calculate recent form (last 3 races)
-            recent_races = driver_races.sort_values("Date", ascending=False).head(3)
-            if not recent_races.empty:
-                recent_positions = recent_races["Position"].astype(float)
-                recent_form = 1 - (recent_positions.mean() / 20)
-            else:
-                recent_form = 0.5
-
-            # Calculate tire management
-            if "TireDegradation" in driver_races.columns:
-                tire_factor = 1 - driver_races["TireDegradation"].mean()
-            else:
-                tire_factor = 0.5
-
-            # Calculate overtaking ability
-            if "Overtakes" in driver_races.columns:
-                overtake_factor = min(
-                    driver_races["Overtakes"].mean() / 5, 1.0
-                )  # Cap at 5 overtakes
-            else:
-                overtake_factor = 0.5
-
-            # Weight the factors
-            driver_pace = (
-                position_factor * 0.3
-                + recent_form * 0.3
-                + tire_factor * 0.2
-                + overtake_factor * 0.2
-            )
-
-            # Apply team-specific adjustments
-            team_adjustments = {
-                "Red Bull Racing": 1.15,  # 15% boost for top team
-                "Ferrari": 1.10,  # 10% boost for second best
-                "Mercedes": 1.05,  # 5% boost for third best
-                "McLaren": 1.02,  # 2% boost for fourth best
-                "Aston Martin": 1.00,  # Base performance
-                "Alpine F1 Team": 0.98,  # 2% penalty
-                "Williams": 0.95,  # 5% penalty
-                "Visa Cash App Racing Bulls F1 Team": 0.93,  # 7% penalty
-                "Kick Sauber": 0.90,  # 10% penalty
-                "Haas F1 Team": 0.85,  # 15% penalty
-            }
-
-            team_factor = team_adjustments.get(team_name, 1.0)
-            driver_pace *= team_factor
-
-            return max(0.0, min(1.0, driver_pace))
-
-        except Exception as e:
-            logger.error(f"Error calculating driver race pace factor: {e}")
-            return 0.5
-
-    def _get_team_race_pace_characteristics(self, team_name, historical_data):
-        """
-        Calculate team-specific race pace characteristics
-
-        Args:
-            team_name: Team name
-            historical_data: Historical race data
-
-        Returns:
-            dict: Team race pace characteristics
-        """
-        try:
-            if historical_data is None or historical_data.empty:
-                return self._get_default_team_characteristics()
-
-            # Get team's historical races
-            team_races = historical_data[historical_data["TeamName"] == team_name]
-            if team_races.empty:
-                return self._get_default_team_characteristics()
-
-            # Calculate tire degradation characteristics
-            if "TireDegradation" in team_races.columns:
-                tire_degradation = team_races["TireDegradation"].mean()
-            else:
-                tire_degradation = 0.5
-
-            # Calculate race strategy effectiveness
-            if "StrategyEffectiveness" in team_races.columns:
-                strategy_effectiveness = team_races["StrategyEffectiveness"].mean()
-            else:
-                strategy_effectiveness = 0.5
-
-            # Calculate race pace consistency
-            if "RacePace" in team_races.columns:
-                pace_std = team_races["RacePace"].std()
-                pace_consistency = 1 - min(pace_std / 2, 1)  # Normalize to 0-1
-            else:
-                pace_consistency = 0.5
-
-            # Calculate overtaking effectiveness
-            if "Overtakes" in team_races.columns:
-                overtake_effectiveness = min(team_races["Overtakes"].mean() / 5, 1.0)
-            else:
-                overtake_effectiveness = 0.5
-
-            # Calculate race pace vs qualifying pace ratio
-            if "QualifyingPosition" in team_races.columns and "Position" in team_races.columns:
-                qual_pos = team_races["QualifyingPosition"].mean()
-                race_pos = team_races["Position"].mean()
-                race_qual_ratio = 1 - abs(qual_pos - race_pos) / 20
-            else:
-                race_qual_ratio = 0.5
-
-            return {
-                "TireDegradation": tire_degradation,
-                "StrategyEffectiveness": strategy_effectiveness,
-                "PaceConsistency": pace_consistency,
-                "OvertakeEffectiveness": overtake_effectiveness,
-                "RaceQualRatio": race_qual_ratio,
-            }
-
-        except Exception as e:
-            logger.error(f"Error calculating team race pace characteristics: {e}")
-            return self._get_default_team_characteristics()
-
-    def _get_default_team_characteristics(self):
-        """Get default team race pace characteristics"""
-        return {
-            "TireDegradation": 0.5,
-            "StrategyEffectiveness": 0.5,
-            "PaceConsistency": 0.5,
-            "OvertakeEffectiveness": 0.5,
-            "RaceQualRatio": 0.5,
+    def _calculate_race_pace(self, driver_data):
+        # Base weights for different performance aspects
+        base_weights = {
+            'qualifying': 0.30,      # Maintained qualifying weight
+            'driver_pace': 0.35,     # Maintained driver pace importance
+            'consistency': 0.20,     # Maintained consistency factor
+            'adaptability': 0.15     # Maintained adaptability factor
         }
 
-    def _calculate_race_pace(self, qualifying_performance, team_name, track_info, historical_data):
-        """
-        Calculate race pace score based on multiple factors
-
-        Args:
-            qualifying_performance: Driver's qualifying performance (0-1)
-            team_name: Team name
-            track_info: Track characteristics
-            historical_data: Historical race data
-
-        Returns:
-            float: Race pace score (0-1)
-        """
-        try:
-            # Get driver-specific race pace factor using the correct driver ID
-            driver_id = track_info.get(
-                "DriverId", team_name
-            )  # Use driver ID from track info if available
-            driver_pace = self._get_driver_race_pace_factor(driver_id, team_name, historical_data)
-
-            # Get team race pace characteristics
-            team_characteristics = self._get_team_race_pace_characteristics(
-                team_name, historical_data
-            )
-
-            # Get track-specific adjustments
-            track_type = track_info.get("TrackType", "balanced")
-            track_length = track_info.get("TrackLength", 5.0)
-            track_elevation = track_info.get("TrackElevation", 0.0)
-
-            # Calculate track adaptation factor
-            track_adaptation = self._get_circuit_adaptation(
-                track_type, track_length, track_elevation
-            )
-
-            # Calculate weather adaptation factor
-            weather_conditions = track_info.get("WeatherConditions", {})
-            weather_adaptation = self._get_weather_adaptation(
-                weather_conditions.get("Temperature", 25),
-                weather_conditions.get("Humidity", 50),
-                weather_conditions.get("WindSpeed", 0),
-                weather_conditions.get("IsWet", False),
-            )
-
-            # Weight the factors
-            race_pace = (
-                qualifying_performance * 0.35  # Increased qualifying weight
-                + driver_pace * 0.25  # Driver-specific race pace
-                + team_characteristics["RaceQualRatio"] * 0.15  # Team race vs qual ratio
-                + team_characteristics["PaceConsistency"] * 0.10  # Team pace consistency
-                + team_characteristics["StrategyEffectiveness"] * 0.10  # Team strategy
-                + track_adaptation * 0.03  # Reduced track adaptation weight
-                + weather_adaptation * 0.02  # Reduced weather adaptation weight
-            )
-
-            # Apply team-specific adjustments
-            team_adjustments = {
-                "Red Bull Racing": 1.15,  # 15% boost for top team
-                "Ferrari": 1.10,  # 10% boost for second best
-                "Mercedes": 1.05,  # 5% boost for third best
-                "McLaren": 1.02,  # 2% boost for fourth best
-                "Aston Martin": 1.00,  # Base performance
-                "Alpine F1 Team": 0.98,  # 2% penalty
-                "Williams": 0.95,  # 5% penalty
-                "Visa Cash App Racing Bulls F1 Team": 0.93,  # 7% penalty
-                "Kick Sauber": 0.90,  # 10% penalty
-                "Haas F1 Team": 0.85,  # 15% penalty
+        # Team-specific race pace factors - further refined
+        team_race_pace_factors = {
+            'Ferrari': {
+                'qualifying_weight': 0.32,
+                'race_pace_boost': 1.12,
+                'tire_management': 1.08,
+                'development_factor': 1.05
+            },
+            'Red Bull': {
+                'qualifying_weight': 0.30,
+                'race_pace_boost': 1.15,
+                'tire_management': 1.12,
+                'development_factor': 1.08
+            },
+            'McLaren': {
+                'qualifying_weight': 0.42,    # Further increased qualifying weight
+                'race_pace_boost': 1.18,      # Increased race pace boost
+                'tire_management': 1.12,      # Improved tire management
+                'development_factor': 1.10    # Increased development factor
+            },
+            'Mercedes': {
+                'qualifying_weight': 0.38,    # Adjusted qualifying weight
+                'race_pace_boost': 1.15,      # Maintained race pace boost
+                'tire_management': 1.10,      # Maintained tire management
+                'development_factor': 1.06    # Maintained development factor
+            },
+            'Aston Martin': {
+                'qualifying_weight': 0.32,
+                'race_pace_boost': 1.06,
+                'tire_management': 1.05,
+                'development_factor': 1.03
+            },
+            'Alpine': {
+                'qualifying_weight': 0.33,
+                'race_pace_boost': 1.04,
+                'tire_management': 1.03,
+                'development_factor': 1.02
+            },
+            'Williams': {
+                'qualifying_weight': 0.34,
+                'race_pace_boost': 1.03,
+                'tire_management': 1.02,
+                'development_factor': 1.02
+            },
+            'Racing Bulls': {
+                'qualifying_weight': 0.33,
+                'race_pace_boost': 1.04,
+                'tire_management': 1.03,
+                'development_factor': 1.02
+            },
+            'Kick Sauber': {
+                'qualifying_weight': 0.34,
+                'race_pace_boost': 1.02,
+                'tire_management': 1.02,
+                'development_factor': 1.01
+            },
+            'Haas F1 Team': {
+                'qualifying_weight': 0.34,
+                'race_pace_boost': 1.02,
+                'tire_management': 1.01,
+                'development_factor': 1.01
             }
+        }
 
-            team_factor = team_adjustments.get(team_name, 1.0)
-            race_pace *= team_factor
+        # Driver-specific adjustments - refined based on recent performance
+        driver_specific_factors = {
+            # Top tier - proven race winners
+            'VER': {'race_craft': 1.10, 'consistency': 1.08, 'adaptability': 1.08},
+            'HAM': {'race_craft': 1.08, 'consistency': 1.08, 'adaptability': 1.08},
+            'LEC': {'race_craft': 1.08, 'consistency': 1.06, 'adaptability': 1.07},
+            
+            # Strong performers - regular podium contenders
+            'SAI': {'race_craft': 1.06, 'consistency': 1.07, 'adaptability': 1.06},
+            'NOR': {'race_craft': 1.10, 'consistency': 1.08, 'adaptability': 1.08},  # Increased Norris's factors
+            'RUS': {'race_craft': 1.05, 'consistency': 1.06, 'adaptability': 1.05},  # Adjusted Russell's factors
+            
+            # Solid midfield - consistent point scorers
+            'PIA': {'race_craft': 1.08, 'consistency': 1.07, 'adaptability': 1.07},  # Increased Piastri's factors
+            'ALO': {'race_craft': 1.07, 'consistency': 1.05, 'adaptability': 1.06},
+            'OCO': {'race_craft': 1.04, 'consistency': 1.04, 'adaptability': 1.04},
+            
+            # Developing talents
+            'ALB': {'race_craft': 1.04, 'consistency': 1.03, 'adaptability': 1.04},
+            'TSU': {'race_craft': 1.03, 'consistency': 1.02, 'adaptability': 1.03},
+            'BOT': {'race_craft': 1.04, 'consistency': 1.04, 'adaptability': 1.03}
+        }
 
-            # Apply circuit-specific adjustments
-            if track_type == "high_speed":
-                race_pace *= 1.05  # 5% boost for high-speed circuits
-            elif track_type == "technical":
-                race_pace *= 0.95  # 5% penalty for technical circuits
-            elif track_type == "street":
-                race_pace *= 0.90  # 10% penalty for street circuits
-            elif track_type == "desert":
-                race_pace *= 1.02  # 2% boost for desert circuits
+        # Get team-specific factors with balanced defaults
+        team = driver_data['Team']
+        team_factors = team_race_pace_factors.get(team, {
+            'qualifying_weight': base_weights['qualifying'],
+            'race_pace_boost': 1.0,
+            'tire_management': 1.0,
+            'development_factor': 1.0
+        })
 
-            # Apply weather adjustments
-            if weather_conditions.get("IsWet", False):
-                race_pace *= 0.85  # 15% penalty in wet conditions
-            if weather_conditions.get("Temperature", 25) > 30:
-                race_pace *= 0.98  # 2% penalty in high temperatures
-            if weather_conditions.get("WindSpeed", 0) > 20:
-                race_pace *= 0.99  # 1% penalty in high winds
+        # Calculate base race pace with more emphasis on recent performance
+        qualifying_score = driver_data['Position'] if 'Position' in driver_data else driver_data.get('GridPosition', 0)
+        driver_pace = driver_data.get('DriverPace', 0)
+        recent_performance = driver_data.get('RecentPerformance', qualifying_score)
+        
+        # Calculate weighted race pace
+        race_pace = (
+            qualifying_score * team_factors['qualifying_weight'] +
+            driver_pace * base_weights['driver_pace'] +
+            recent_performance * base_weights['consistency']
+        )
 
-            return max(0.0, min(1.0, race_pace))
+        # Apply team factors with balanced impact
+        race_pace *= team_factors['race_pace_boost']
+        race_pace *= team_factors['tire_management']
+        race_pace *= team_factors['development_factor']
 
-        except Exception as e:
-            logger.error(f"Error calculating race pace: {e}")
-            return 0.5
+        # Apply driver-specific factors if available
+        driver_code = driver_data.get('DriverCode', '')
+        if driver_code in driver_specific_factors:
+            driver_factors = driver_specific_factors[driver_code]
+            race_pace *= (
+                driver_factors['race_craft'] * 0.4 +
+                driver_factors['consistency'] * 0.3 +
+                driver_factors['adaptability'] * 0.3
+            )
+
+        # Normalize race pace to ensure it stays within reasonable bounds
+        race_pace = max(0.1, min(2.0, race_pace))
+
+        return race_pace

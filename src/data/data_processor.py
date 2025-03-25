@@ -1002,3 +1002,54 @@ class F1DataProcessor:
             "Length": 5.0,  # Default value in km
             "Laps": 58,  # Default value
         }
+
+    def process_actual_race_data(self, year: int, race: int) -> pd.DataFrame:
+        """Process actual race data for a specific year and race."""
+        # First, get the qualifying data to get grid positions
+        quali_session = self.load_session_data(year, race, 'Q')
+        if quali_session is None:
+            print("Could not load qualifying data")
+            return None
+
+        # Get race results
+        race_session = self.load_session_data(year, race, 'R')
+        if race_session is None:
+            print("Could not load race data")
+            return None
+
+        # Get the results DataFrames
+        quali_data = quali_session.results
+        race_data = race_session.results
+
+        print("Race DataFrame columns:", race_data.columns.tolist())
+        print("\nRace DataFrame head:")
+        print(race_data.head())
+
+        # Create a mapping of driver numbers to their qualifying positions
+        quali_positions = {}
+        if 'DriverNumber' in quali_data.columns and 'Position' in quali_data.columns:
+            for _, row in quali_data.iterrows():
+                quali_positions[str(row['DriverNumber'])] = row['Position']
+
+        # Create a new DataFrame with the required columns
+        result_df = pd.DataFrame()
+        
+        # Add required columns from race data
+        columns_to_copy = ['DriverNumber', 'Position', 'Status', 'Points', 'FullName', 'TeamName']
+        for col in columns_to_copy:
+            if col in race_data.columns:
+                result_df[col] = race_data[col]
+
+        # Rename columns to match expected format
+        result_df = result_df.rename(columns={'FullName': 'Driver', 'TeamName': 'Team'})
+
+        # Add grid positions from qualifying data
+        result_df['GridPosition'] = result_df['DriverNumber'].astype(str).map(quali_positions)
+
+        # Convert numeric columns
+        numeric_columns = ['Position', 'GridPosition', 'Points']
+        for col in numeric_columns:
+            if col in result_df.columns:
+                result_df[col] = pd.to_numeric(result_df[col], errors='coerce')
+
+        return result_df
