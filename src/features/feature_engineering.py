@@ -691,6 +691,95 @@ class F1FeatureEngineer:
             }
         }
 
+        # Driver adaptation to new teams factor
+        self.driver_team_adaptation = {
+            'fast_adapter': 0.85,    # Drivers who adapt quickly to new cars (recover 85% of potential within first season)
+            'medium_adapter': 0.70,  # Drivers who take some time to adapt (recover 70% of potential within first season)
+            'slow_adapter': 0.55     # Drivers who need significant time to adapt (recover 55% of potential within first season)
+        }
+        
+        # Driver adaptation classification
+        self.driver_adaptation_speed = {
+            'Verstappen': 'fast_adapter',
+            'Hamilton': 'fast_adapter',
+            'Alonso': 'fast_adapter',
+            'Leclerc': 'fast_adapter',
+            'Sainz': 'fast_adapter',
+            'Russell': 'medium_adapter',
+            'Norris': 'medium_adapter',
+            'Piastri': 'medium_adapter',
+            'Perez': 'medium_adapter',
+            'Gasly': 'medium_adapter',
+            'Stroll': 'slow_adapter',
+            'Tsunoda': 'medium_adapter',
+            'Magnussen': 'medium_adapter',
+            'Albon': 'medium_adapter',
+            'Bottas': 'medium_adapter',
+            'Hulkenberg': 'fast_adapter',
+            'Ricciardo': 'slow_adapter',
+            'Zhou': 'slow_adapter',
+            'Ocon': 'medium_adapter',
+            'Lawson': 'medium_adapter',
+            'Bearman': 'medium_adapter',
+            'Antonelli': 'fast_adapter',
+            'Bortoleto': 'medium_adapter',
+            'Doohan': 'medium_adapter',
+            'Hadjar': 'medium_adapter'
+        }
+        
+        # Team transition difficulty (how hard it is to adapt to this team's car)
+        self.team_transition_difficulty = {
+            'Red Bull Racing': 0.85,    # Difficult car philosophy to adapt to
+            'Ferrari': 0.75,           # Unique handling characteristics
+            'Mercedes': 0.70,          # Technical car with specific driving style
+            'McLaren': 0.65,           # Generally balanced car
+            'Aston Martin': 0.60,      # More traditional handling
+            'Alpine': 0.65,            # Variable characteristics
+            'Williams': 0.55,          # Simpler car philosophy
+            'Racing Bulls': 0.75,      # Similar to Red Bull but less extreme
+            'Kick Sauber': 0.50,       # Easier to adapt to
+            'Haas F1 Team': 0.55       # Conventional design
+        }
+        
+        # Driver years at current team (to be used for adaptation calculation)
+        self.driver_team_years = {
+            'Verstappen': {'Red Bull Racing': 9},
+            'Hamilton': {'Ferrari': 0, 'previous': {'Mercedes': 12}},
+            'Leclerc': {'Ferrari': 6},
+            'Russell': {'Mercedes': 3},
+            'Perez': {'Red Bull Racing': 4},
+            'Sainz': {'Williams': 0, 'previous': {'Ferrari': 3}},
+            'Alonso': {'Aston Martin': 2},
+            'Norris': {'McLaren': 6},
+            'Piastri': {'McLaren': 2},
+            'Stroll': {'Aston Martin': 6},
+            'Hulkenberg': {'Kick Sauber': 0, 'previous': {'Haas F1 Team': 2}},
+            'Tsunoda': {'Racing Bulls': 4},
+            'Albon': {'Williams': 3},
+            'Ocon': {'Haas F1 Team': 0, 'previous': {'Alpine': 4}},
+            'Gasly': {'Alpine': 2},
+            'Lawson': {'Red Bull Racing': 0, 'previous': {'Racing Bulls': 0}},
+            'Antonelli': {'Mercedes': 0},
+            'Bearman': {'Haas F1 Team': 0},
+            'Bortoleto': {'Kick Sauber': 0},
+            'Doohan': {'Alpine': 0},
+            'Hadjar': {'Racing Bulls': 0}
+        }
+        
+        # Enhanced team development trajectory factors (season progress rate)
+        self.team_development_rate = {
+            'Red Bull Racing': 1.02,  # Consistent development through season
+            'Ferrari': 1.04,         # Strong early season development
+            'Mercedes': 1.05,        # Typically improves significantly through season
+            'McLaren': 1.06,         # Very strong development trajectory
+            'Aston Martin': 1.03,    # Good development pace
+            'Alpine': 1.01,          # Slower development
+            'Williams': 1.03,        # Improved development capability
+            'Racing Bulls': 1.02,    # Solid development
+            'Kick Sauber': 1.01,     # Limited in-season development
+            'Haas F1 Team': 1.02     # Variable development pattern
+        }
+
     def calculate_team_performance(self, historical_data, current_data):
         """Calculate team performance metrics based on historical and current data."""
         try:
@@ -1926,7 +2015,7 @@ class F1FeatureEngineer:
 
         # Calculate race pace score
         features["RacePaceScore"] = features.apply(
-            lambda x: self._calculate_race_pace(x, x["Position"], track_info, self._get_weather_conditions(track_info.get('circuit_name', ''))),
+            lambda x: self._calculate_race_pace(x, track_info, self._get_weather_conditions(track_info.get('circuit_name', ''))),
             axis=1,
         )
 
@@ -2055,208 +2144,255 @@ class F1FeatureEngineer:
             logger.error(f"Error calculating DNF probability: {e}")
             return 0.0005  # Return base DNF probability in case of error
 
-    def _calculate_race_pace(self, driver_data, qualifying_position, track_info, weather_conditions):
-        """Enhanced race pace calculation with improved modeling for all teams and advanced track characteristics"""
+    def _calculate_race_pace(self, driver_data, track_info, weather_data):
+        """
+        Calculate predicted race pace for a driver
+        
+        Args:
+            driver_data: Dictionary containing driver information
+            track_info: Dictionary containing track information
+            weather_data: Dictionary containing weather information
+            
+        Returns:
+            Predicted race pace (lower is better)
+        """
         try:
-            # Extract driver and team information
-            driver_name = driver_data.get('Abbreviation', '') or driver_data.get('BroadcastName', '')
-            if isinstance(driver_name, pd.Series):
-                driver_name = driver_name.iloc[0] if not driver_name.empty else ''
+            # Extract driver information
+            driver_name = driver_data.get('Driver', 'Unknown')
+            team_name = driver_data.get('Team', 'Unknown')
+            qualifying_position = float(driver_data.get('QualifyingPosition', 10))
             
-            team = driver_data.get('TeamName', '')
-            if isinstance(team, pd.Series):
-                team = team.iloc[0] if not team.empty else ''
+            # Get driver characteristics with defaults
+            driver_characteristics = {
+                'wet_performance': driver_data.get('WetPerformance', 0.8),
+                'dry_performance': driver_data.get('DryPerformance', 0.8),
+                'starts': driver_data.get('Starts', 0.8),
+                'consistency': driver_data.get('Consistency', 0.8),
+                'aggression': driver_data.get('Aggression', 0.8),
+                'tire_management': driver_data.get('TireManagement', 0.8),
+                'experience': driver_data.get('Experience', 0.8),
+                'recovery_ability': driver_data.get('RecoveryAbility', 0.8),
+                'track_knowledge': driver_data.get('TrackKnowledge', 0.8),
+            }
             
-            # Get driver-specific characteristics or defaults
-            driver_chars = self.driver_characteristics.get(driver_name, {
-                'wet_performance': 1.0,
-                'tire_management': 1.0,
-                'race_craft': 1.0,
-                'qualifying_pace': 1.0,
-                'consistency': 1.0,
-                'adaptability': 1.0,
-                'defensive_skill': 1.0,
-                'aggressive_style': 1.0,
-                'recovery_ability': 1.0,
-                'track_knowledge': 1.0
-            })
-            
-            # Calculate recent form with enhanced factors
+            # Calculate recent form
             recent_form = self._calculate_recent_form(driver_data)
             
             # Get circuit name and characteristics
-            circuit_name = track_info.get('circuit_name', '')
-            circuit_chars = self.circuit_characteristics.get(circuit_name, self.default_circuit_characteristics)
+            circuit_name = track_info.get('CircuitName', 'Unknown')
+            circuit_type = track_info.get('TrackType', 'mixed')
             
             # Get team characteristics
-            team_chars = self.team_characteristics.get(team, self.default_team_characteristics)
+            team_characteristics = self.team_characteristics.get(team_name, {
+                'power_unit_performance': 0.75,
+                'aerodynamic_efficiency': 0.75,
+                'mechanical_grip': 0.75,
+                'top_speed': 0.75,
+                'cornering_ability': 0.75,
+                'tire_wear_management': 0.75,
+                'wet_weather_performance': 0.75,
+                'reliability': 0.75,
+                'development_rate': 0.75,
+                'strategy_execution': 0.75
+            })
             
-            # Define base weights for factors
+            # Define base weights for different factors
             weights = {
-                'qualifying_position': 0.25,
-                'recent_form': 0.20,
-                'track_specific': 0.20,
-                'weather_impact': 0.15,
-                'team_performance': 0.20
+                'qualifying_position': 0.18,   # Slightly reduced from previous 0.20
+                'recent_form': 0.15,
+                'driver_characteristics': 0.18, # Slightly reduced from previous 0.20
+                'team_characteristics': 0.22,   # Slightly reduced from previous 0.25
+                'weather_impact': 0.12,         # Increased from previous 0.10
+                'track_specific': 0.10,
+                'pit_strategy': 0.05           # New weight for pit strategy
             }
             
-            # Special adjustments for top drivers
-            if driver_name == 'Verstappen':
-                # Verstappen's ability to outperform his qualifying position
-                weights['qualifying_position'] = 0.20
-                weights['recent_form'] = 0.25
-                weights['team_performance'] = 0.25
-            elif driver_name in ['Hamilton', 'Leclerc', 'Norris']:
-                # Slightly modified weights for other top drivers
-                weights['qualifying_position'] = 0.22
-                weights['recent_form'] = 0.23
-                weights['team_performance'] = 0.22
+            # --- DRIVER ADAPTATION FACTOR ---
+            # Calculate how well driver has adapted to their team/car
+            race_number = track_info.get('RaceNumber', 1)
+            adaptation_factor = self._calculate_driver_adaptation(driver_name, team_name, race_number)
             
-            # Calculate qualifying performance factor - adjusted for better prediction
-            # Lower qualifying positions have less impact on race performance
+            # --- TRACK-SPECIFIC DRIVER PERFORMANCE ---
+            # Calculate driver's historical performance at this track
+            track_performance_factor = self._calculate_track_specific_performance(driver_name, circuit_name, circuit_type)
+            
+            # --- DETAILED WEATHER IMPACT ---
+            # Calculate enhanced weather impact using our new detailed method
+            weather_impact_factor = self._calculate_detailed_weather_impact(driver_name, team_name, track_info, weather_data)
+            
+            # --- PIT STOP STRATEGY FACTOR ---
+            # Calculate pit stop strategy factor
+            pit_strategy_factor = self._calculate_pit_stop_strategy(
+                driver_name, team_name, circuit_name, track_info, weather_data
+            )
+            
+            # --- STANDARD STRATEGY FACTOR --- 
+            # Calculate strategic advantage/disadvantage (team-level strategy)
+            team_strategy_factor = self._calculate_strategy_factor(
+                driver_name, team_name, circuit_name, circuit_type, 
+                float(track_info.get('TrackTemp', 25.0)),
+                float(track_info.get('AirTemp', 22.0))
+            )
+            
+            # Apply development trajectory for current race
+            race_number = max(1, min(track_info.get('RaceNumber', 1), 23))  # Ensure valid race number
+            season_progress = race_number / 23  # Normalize to 0-1 range
+            
+            development_factor = 1.0
+            if team_name in self.team_development_rate:
+                base_development = self.team_development_rate[team_name]
+                # Apply non-linear development curve - most gains in first half of season
+                if season_progress < 0.5:
+                    development_factor = 1.0 + (base_development * season_progress * 1.5)
+                else:
+                    mid_season_dev = 1.0 + (base_development * 0.5 * 1.5)
+                    remaining_dev = base_development * 0.5  # Remaining development potential
+                    late_season_prog = (season_progress - 0.5) * 2  # Rescale to 0-1 for second half
+                    development_factor = mid_season_dev + (remaining_dev * late_season_prog)
+            
+            # Qualifying Performance Factor (with new adjustments)
+            qualifying_factor = 0
             if qualifying_position <= 3:
-                quali_factor = 1.0 - (qualifying_position - 1) * 0.05
+                qualifying_factor = 1.0 - ((qualifying_position - 1) * 0.05)
             elif qualifying_position <= 10:
-                quali_factor = 0.90 - (qualifying_position - 3) * 0.03
+                qualifying_factor = 0.9 - ((qualifying_position - 3) * 0.035)
             else:
-                quali_factor = 0.70 - (qualifying_position - 10) * 0.02
-                
-            # Special case for Red Bull and Verstappen's recovery ability
-            if team == 'Red Bull Racing':
-                if driver_name == 'Verstappen' and qualifying_position > 3:
-                    # Verstappen's exceptional ability to recover from worse grid positions
-                    recovery_boost = driver_chars['recovery_ability'] * 0.25
-                    quali_factor += recovery_boost
-                elif driver_name == 'Perez' and qualifying_position > 5:
-                    # Perez's ability to make up positions
-                    recovery_boost = 0.15
-                    quali_factor += recovery_boost
+                qualifying_factor = 0.7 - ((qualifying_position - 10) * 0.015)
             
-            # Special case for Ferrari recovery
-            if team == 'Ferrari' and qualifying_position > 3:
-                recovery_boost = 0.12
-                quali_factor += recovery_boost
+            # Adjust qualifying factor based on team characteristics
+            quali_team_adjustment = ((team_characteristics['aerodynamic_efficiency'] - 0.75) * 0.3 + 
+                                    (team_characteristics['mechanical_grip'] - 0.75) * 0.3)
+            qualifying_factor = qualifying_factor + quali_team_adjustment
+            
+            # Special case for Red Bull (historically better in race than qualifying)
+            if team_name == 'Red Bull Racing':
+                qualifying_factor += 0.05
+            
+            # Special case for Ferrari (historically sometimes worse in race than qualifying)
+            if team_name == 'Ferrari':
+                qualifying_factor -= 0.03
+            
+            # Track-specific factor (with circuit type adjustments)
+            track_factor = 0
+            if circuit_type == 'high_speed':
+                track_factor = (team_characteristics['aerodynamic_efficiency'] * 0.5 + 
+                               team_characteristics['power_unit_performance'] * 0.5 - 0.75) * 0.3
+                
+                # Specific team adjustments for high-speed tracks
+                if team_name == 'Red Bull Racing':
+                    track_factor += 0.07
+                elif team_name == 'McLaren':
+                    track_factor += 0.06
+                elif team_name == 'Ferrari':
+                    track_factor += 0.05
                     
-            # Weather impact factor
-            weather_factor = 1.0
-            if weather_conditions.get('rain_chance', 0) > 0.3:
-                rain_intensity = min(1.0, weather_conditions.get('rain_chance', 0))
-                
-                # Driver wet performance impact
-                driver_wet_factor = driver_chars['wet_performance']
-                
-                # Team wet performance impact
-                team_wet_factor = team_chars['wet_performance']
-                
-                # Combined wet performance with higher weight on driver skill
-                weather_factor = 1.0 + (driver_wet_factor * 0.7 + team_wet_factor * 0.3 - 1.0) * rain_intensity
-            
-            # Temperature effects
-            if 'air_temp' in weather_conditions:
-                temp = weather_conditions['air_temp']
-                # Team-specific temperature adjustments
-                if team == 'Ferrari' and temp > 28:
-                    weather_factor *= 1.05  # Ferrari performs better in higher temperatures
-                elif team == 'Mercedes' and temp < 20:
-                    weather_factor *= 0.95  # Mercedes struggles in lower temperatures
-                elif team == 'Red Bull Racing':
-                    # Red Bull is consistent across temperature ranges
-                    weather_factor *= 1.02
-            
-            # Determine circuit type based on characteristics
-            circuit_type = 'mixed'  # Default
-            if circuit_chars.get('straight_speed_importance', 0) > 0.6:
-                circuit_type = 'high_speed'
-            elif circuit_chars.get('corner_speed_importance', 0) > 0.7:
-                circuit_type = 'technical'
-            elif circuit_name in ['Monaco', 'Singapore', 'Baku', 'Jeddah', 'Las Vegas']:
-                circuit_type = 'street'
-            
-            # Calculate driver adaptation to this circuit type
-            driver_circuit_adaptation = 1.0
-            if circuit_type == 'high_speed':
-                driver_circuit_adaptation = driver_chars['qualifying_pace'] * 0.6 + driver_chars['consistency'] * 0.4
             elif circuit_type == 'technical':
-                driver_circuit_adaptation = driver_chars['race_craft'] * 0.6 + driver_chars['adaptability'] * 0.4
-            elif circuit_type == 'street':
-                driver_circuit_adaptation = driver_chars['defensive_skill'] * 0.5 + driver_chars['consistency'] * 0.5
-            else:  # mixed
-                driver_circuit_adaptation = (driver_chars['qualifying_pace'] + driver_chars['race_craft'] + 
-                                          driver_chars['adaptability'] + driver_chars['consistency']) / 4
-            
-            # Calculate team adaptation to this circuit type
-            team_circuit_adaptation = 1.0
-            if circuit_type == 'high_speed':
-                team_circuit_adaptation = team_chars.get('high_speed', 1.0)
-            elif circuit_type == 'technical':
-                team_circuit_adaptation = team_chars.get('technical_tracks', 1.0)
-            elif circuit_type == 'street':
-                team_circuit_adaptation = team_chars.get('street_circuits', 1.0)
-            
-            # Combine driver and team adaptations (60/40 split favoring team car capability)
-            track_specific_factor = team_circuit_adaptation * 0.6 + driver_circuit_adaptation * 0.4
-            
-            # Enhanced team-specific adjustments
-            team_performance = team_chars.get('race_pace', 1.0)
-            
-            # Special cases for certain teams
-            if team == 'Red Bull Racing':
-                # Red Bull's exceptional race pace regardless of qualifying
-                team_boost = 1.10
-                if driver_name == 'Verstappen':
-                    team_boost *= 1.12  # Extra Verstappen factor
-                team_performance *= team_boost
-            
-            elif team == 'Ferrari':
-                # Ferrari's race pace improvements for 2024
-                team_performance *= 1.06
-            
-            elif team == 'McLaren':
-                # McLaren's improved race pace for 2024
-                team_performance *= 1.08
+                track_factor = (team_characteristics['mechanical_grip'] * 0.6 + 
+                               team_characteristics['cornering_ability'] * 0.4 - 0.75) * 0.3
                 
-            elif team == 'Mercedes':
-                # Mercedes 2024 slight struggles
-                team_performance *= 0.96
+                # Specific team adjustments for technical tracks
+                if team_name == 'Ferrari':
+                    track_factor += 0.05
+                elif team_name == 'Mercedes':
+                    track_factor += 0.04
+                elif team_name == 'McLaren':
+                    track_factor += 0.03
+                    
+            elif circuit_type == 'street':
+                track_factor = (team_characteristics['mechanical_grip'] * 0.5 + 
+                               driver_characteristics['consistency'] * 0.5 - 0.8) * 0.3
+                
+                # Specific driver adjustments for street circuits
+                if driver_name in ['Verstappen', 'Leclerc', 'Alonso']:
+                    track_factor += 0.06
+                elif driver_name in ['Hamilton', 'Norris']:
+                    track_factor += 0.04
             
-            # Calculate grid position advantage
-            if qualifying_position <= 3:
-                # Front row advantage
-                grid_advantage = 1.05
-            elif qualifying_position <= 6:
-                # Clean side of grid in early rows
-                grid_advantage = 1.02
-            elif qualifying_position <= 10:
-                # Midfield
-                grid_advantage = 1.0
-            else:
-                # Back of grid
-                grid_advantage = 0.98
+            # Apply track-specific performance factor
+            track_factor = track_factor * track_performance_factor
             
-            # Adjust grid advantage based on track overtaking difficulty
-            overtaking_difficulty = circuit_chars.get('overtaking_difficulty', 0.5)
-            if overtaking_difficulty > 0.7:  # Hard to overtake
-                grid_advantage = grid_advantage ** 1.5  # Increase the importance of grid position
-            elif overtaking_difficulty < 0.3:  # Easy to overtake
-                grid_advantage = grid_advantage ** 0.7  # Decrease the importance of grid position
+            # Team-specific adjustments (with development trajectory)
+            team_factor = ((team_characteristics['power_unit_performance'] - 0.75) * 0.25 +
+                          (team_characteristics['aerodynamic_efficiency'] - 0.75) * 0.25 +
+                          (team_characteristics['mechanical_grip'] - 0.75) * 0.25 +
+                          (team_characteristics['tire_wear_management'] - 0.75) * 0.25)
             
-            # Calculate race pace value combining all factors
-            race_pace = (
-                quali_factor * weights['qualifying_position'] +
-                recent_form * weights['recent_form'] +
-                track_specific_factor * weights['track_specific'] +
-                weather_factor * weights['weather_impact'] +
-                team_performance * weights['team_performance']
-            ) * grid_advantage
+            # Apply development factor to team performance
+            team_factor = team_factor * development_factor
             
-            # Ensure race pace is within reasonable range
-            race_pace = max(0.5, min(1.5, race_pace))
+            # Apply adaptation factor to team performance (reducing team performance if driver hasn't fully adapted)
+            team_factor = team_factor * adaptation_factor
             
-            return race_pace
+            # Specific team boosts based on 2024 performance trends
+            if team_name == 'Red Bull Racing':
+                team_factor += 0.08
+            elif team_name == 'McLaren':
+                team_factor += 0.07
+            elif team_name == 'Ferrari':
+                team_factor += 0.06
+            elif team_name == 'Mercedes':
+                team_factor += 0.05
+            elif team_name == 'Aston Martin':
+                team_factor += 0.02
+            
+            # Grid position advantage calculation (considering track overtaking difficulty)
+            track_overtaking_difficulty = track_info.get('OvertakingDifficulty', 0.5)
+            grid_advantage = (1.0 - qualifying_position/20) * track_overtaking_difficulty * 0.2
+            
+            # Track evolution calculation
+            track_evolution_rate = track_info.get('TrackEvolution', 0.6)
+            track_evolution = track_evolution_rate * 0.1
+            
+            # Tire performance calculation
+            tire_compound = driver_data.get('TireCompound', 'Medium')
+            tire_performance = 0
+            
+            if tire_compound == 'Soft':
+                tire_performance = 0.1 if float(track_info.get('TrackTemp', 25.0)) < 35 else -0.05
+            elif tire_compound == 'Hard':
+                tire_performance = -0.05 if float(track_info.get('TrackTemp', 25.0)) < 25 else 0.1
+            
+            # Team strategy advantage (general strategy quality)
+            team_strategy_advantage = (team_strategy_factor - 1.0) * 0.5  # Convert to advantage/disadvantage
+            
+            # Pit stop strategy advantage (specific to pit stops)
+            pit_strategy_advantage = (pit_strategy_factor - 1.0) * 0.7  # Higher impact for pit stop execution
+            
+            # Combined strategy advantage
+            strategy_advantage = team_strategy_advantage * 0.6 + pit_strategy_advantage * 0.4
+            
+            # Driver characteristics factor
+            driver_factor = ((driver_characteristics['consistency'] - 0.8) * 0.3 +
+                            (driver_characteristics['tire_management'] - 0.8) * 0.3 +
+                            (driver_characteristics['aggression'] - 0.8) * 0.2 +
+                            (driver_characteristics['experience'] - 0.8) * 0.1 +
+                            (driver_characteristics['recovery_ability'] - 0.8) * 0.1)
+            
+            # Calculate final race pace
+            # Using updated weights to include pit strategy
+            race_pace = (qualifying_factor * weights['qualifying_position'] +
+                         recent_form * weights['recent_form'] * 1.2 +
+                         driver_factor * weights['driver_characteristics'] +
+                         team_factor * weights['team_characteristics'] * 1.25 +
+                         (weather_impact_factor - 1.0) * weights['weather_impact'] * 2.0 +  # Convert factor to impact
+                         track_factor * weights['track_specific'] +
+                         pit_strategy_advantage * weights['pit_strategy'] * 2.0 +  # Apply with higher multiplier
+                         grid_advantage +
+                         track_evolution +
+                         tire_performance)
+            
+            # Normalize race pace to ensure it's within a reasonable range
+            race_pace = max(-0.5, min(race_pace, 1.5))
+            
+            # Convert to race pace where lower is better
+            # Normalize to a reasonable range (e.g., 80-95 seconds per lap for most tracks)
+            normalized_race_pace = 95 - (race_pace * 15)
+            
+            return normalized_race_pace
             
         except Exception as e:
-            logger.error(f"Error calculating race pace: {e}")
-            return 1.0  # Default in case of error
+            logger.error(f"Error calculating race pace for {driver_data.get('Driver', 'Unknown')}: {e}")
+            return 90.0  # Default race pace
 
     def _calculate_recent_form(self, driver_data):
         """Enhanced recent form calculation with more sophisticated historical weighting"""
@@ -2374,3 +2510,978 @@ class F1FeatureEngineer:
         except Exception as e:
             logger.error(f"Error calculating recent form: {e}")
             return 1.0
+
+    def _calculate_driver_adaptation(self, driver_name, team_name, race_number=1):
+        """
+        Calculate how well a driver has adapted to their team/car
+        
+        Args:
+            driver_name: Name of the driver
+            team_name: Current team name
+            race_number: Race number in the season (1-23)
+            
+        Returns:
+            Adaptation factor (0-1) where 1 is fully adapted
+        """
+        try:
+            # Get driver's years at current team
+            team_info = self.driver_team_years.get(driver_name, {})
+            years_at_team = team_info.get(team_name, 0)
+            
+            # If driver is new to the team, apply adaptation factor
+            if years_at_team < 1:
+                # Get previous team if available
+                previous_team_info = team_info.get('previous', {})
+                previous_teams = list(previous_team_info.keys())
+                previous_team = previous_teams[0] if previous_teams else None
+                previous_years = previous_team_info.get(previous_team, 0) if previous_team else 0
+                
+                # Get driver's adaptation speed
+                adaptation_type = self.driver_adaptation_speed.get(driver_name, 'medium_adapter')
+                adaptation_rate = self.driver_team_adaptation.get(adaptation_type, 0.7)
+                
+                # Get team's difficulty to adapt to
+                team_difficulty = self.team_transition_difficulty.get(team_name, 0.65)
+                
+                # Calculate base adaptation based on driver's adaptability and team difficulty
+                base_adaptation = adaptation_rate * (1 - team_difficulty)
+                
+                # Adjust for race progression through the season (drivers adapt more as season progresses)
+                # Formula creates a curve that rises more quickly in early races, then levels off
+                season_progression = min(1.0, (race_number / 23) * 1.5)
+                
+                # Apply previous experience factor
+                experience_factor = min(1.0, previous_years * 0.1 + 0.7) if previous_years > 0 else 0.7
+                
+                # Calculate final adaptation
+                adaptation = base_adaptation + (1 - base_adaptation) * season_progression * experience_factor
+                
+                # Ensure adaptation is within valid range
+                return max(0.6, min(0.98, adaptation))  # Even new drivers start at 60% minimum
+            else:
+                # Experienced drivers at their teams
+                if years_at_team >= 3:
+                    return 1.0  # Fully adapted
+                else:
+                    # Scaling for drivers in their 1st or 2nd full season with team
+                    return min(0.95 + years_at_team * 0.025, 1.0)
+                    
+        except Exception as e:
+            logger.error(f"Error calculating driver adaptation: {e}")
+            return 0.95  # Default to 95% adaptation if calculation fails
+
+    def _calculate_track_specific_performance(self, driver_name, circuit_name, circuit_type):
+        """
+        Calculate driver's performance factor for specific tracks based on historical performance
+        
+        Args:
+            driver_name: Driver name
+            circuit_name: Name of the circuit
+            circuit_type: Type of circuit (high_speed, technical, street, mixed)
+            
+        Returns:
+            Performance factor for the specific track
+        """
+        try:
+            # Track-specific driver performance factors (1.0 is baseline, >1.0 is better than usual, <1.0 is worse)
+            # This could be expanded with more comprehensive data
+            driver_track_performance = {
+                'Verstappen': {
+                    'Brazil': 1.08,
+                    'Austria': 1.10,
+                    'Zandvoort': 1.12,  # Home race
+                    'Monaco': 1.05,
+                    'Japan': 1.06,
+                    'USA': 1.04,
+                    'Mexico': 1.06,
+                    'high_speed': 1.05   # Track type preference
+                },
+                'Hamilton': {
+                    'UK': 1.12,          # Home race
+                    'Hungary': 1.10,
+                    'Canada': 1.07,
+                    'USA': 1.08,
+                    'Abu Dhabi': 1.05,
+                    'Brazil': 1.06,
+                    'technical': 1.04    # Track type preference
+                },
+                'Leclerc': {
+                    'Monaco': 1.08,      # Home race (but historically unlucky)
+                    'Baku': 1.10,
+                    'Australia': 1.05,
+                    'qualifying_boost': 1.05  # Special factor for qualifying
+                },
+                'Alonso': {
+                    'Monaco': 1.08,
+                    'Singapore': 1.06,
+                    'Hungary': 1.05,
+                    'Spain': 1.08,       # Home race
+                    'street': 1.04       # Track type preference
+                },
+                'Norris': {
+                    'Austria': 1.05,
+                    'Netherlands': 1.05,
+                    'UK': 1.06,          # Home race
+                    'high_speed': 1.03   # Track type preference
+                },
+                'Sainz': {
+                    'Spain': 1.07,       # Home race
+                    'Italy': 1.04,
+                    'Singapore': 1.06,
+                    'street': 1.03       # Track type preference
+                },
+                'Russell': {
+                    'UK': 1.06,          # Home race
+                    'Brazil': 1.05,
+                    'Las Vegas': 1.04,
+                    'mixed': 1.02        # Track type preference
+                },
+                'Piastri': {
+                    'Australia': 1.06,   # Home race
+                    'Japan': 1.04,
+                    'high_speed': 1.03   # Track type preference
+                },
+                'Perez': {
+                    'Mexico': 1.12,      # Home race
+                    'Baku': 1.08,
+                    'Saudi Arabia': 1.06,
+                    'street': 1.04       # Track type preference
+                },
+                'Tsunoda': {
+                    'Japan': 1.08,       # Home race
+                    'technical': 1.02    # Track type preference
+                },
+                'Albon': {
+                    'UK': 1.03,
+                    'Canada': 1.04,
+                    'high_speed': 1.02   # Track type preference
+                },
+                'Gasly': {
+                    'France': 1.05,      # Home race
+                    'Italy': 1.03,
+                    'mixed': 1.02        # Track type preference
+                },
+                'Hulkenberg': {
+                    'Germany': 1.04,     # Home race
+                    'technical': 1.02    # Track type preference
+                },
+                'Stroll': {
+                    'Canada': 1.06,      # Home race
+                    'Baku': 1.04,
+                    'street': 1.02       # Track type preference
+                },
+                'Ocon': {
+                    'France': 1.05,      # Home race
+                    'Hungary': 1.03,
+                    'mixed': 1.01        # Track type preference
+                }
+            }
+
+            # Get driver track performance
+            driver_circuits = driver_track_performance.get(driver_name, {})
+            
+            # Base performance factor
+            track_factor = 1.0
+            
+            # Add circuit-specific factor if available
+            if circuit_name in driver_circuits:
+                track_factor *= driver_circuits[circuit_name]
+            
+            # Add track type factor if available
+            if circuit_type in driver_circuits:
+                track_factor *= driver_circuits[circuit_type]
+            
+            # Return within reasonable range
+            return max(0.95, min(1.15, track_factor))
+            
+        except Exception as e:
+            logger.error(f"Error calculating track-specific performance: {e}")
+            return 1.0  # Default to neutral performance if calculation fails
+
+    def _calculate_strategy_factor(self, driver_name, team_name, circuit_name, circuit_type, track_temp, air_temp):
+        """
+        Calculate the strategic advantage/disadvantage for a driver based on team strategic capabilities,
+        track characteristics, and expected tire choices
+        
+        Args:
+            driver_name: Driver name
+            team_name: Team name
+            circuit_name: Circuit name
+            circuit_type: Circuit type
+            track_temp: Track temperature
+            air_temp: Air temperature
+            
+        Returns:
+            Strategy factor affecting race pace
+        """
+        try:
+            # Team strategy strength (1.0 is baseline, higher is better)
+            team_strategy_strength = {
+                'Red Bull Racing': 1.08,  # Excellent overall strategy
+                'Ferrari': 0.97,         # Historically questionable strategy
+                'Mercedes': 1.06,        # Strong strategic team
+                'McLaren': 1.05,         # Solid strategy
+                'Aston Martin': 1.03,    # Good strategy
+                'Alpine': 0.99,          # Variable strategy quality
+                'Williams': 1.01,        # Improved strategic decisions
+                'Racing Bulls': 1.02,    # Decent strategy
+                'Kick Sauber': 1.00,     # Average strategy
+                'Haas F1 Team': 0.99     # Sometimes questionable strategy
+            }
+            
+            # Track strategy importance (how much strategy matters at this track)
+            track_strategy_importance = {
+                'Monaco': 1.15,          # Very high - track position critical
+                'Singapore': 1.12,       # Very high - difficult to pass
+                'Hungary': 1.10,         # High - difficult to pass
+                'Spain': 1.08,           # High - tire management critical
+                'Zandvoort': 1.07,       # High - limited passing
+                'Imola': 1.07,           # High - narrow track
+                'Jeddah': 1.06,          # Above average - safety cars likely
+                'Baku': 1.06,            # Above average - safety cars likely
+                'Melbourne': 1.05,       # Above average
+                'Miami': 1.05,           # Above average
+                'Silverstone': 1.03,     # Average - multiple strategy options
+                'Montreal': 1.03,        # Average - safety cars can affect
+                'Brazil': 1.03,          # Average
+                'Austria': 1.02,         # Slightly below average - straightforward
+                'Belgium': 1.01,         # Slightly below average
+                'Monza': 1.00,           # Below average - low degradation
+                'Las Vegas': 1.00        # Below average - new track
+            }
+            
+            # Driver strategy adaptability (how well driver adapts to strategy changes)
+            driver_strategy_adaptability = {
+                'Verstappen': 1.08,      # Excellent strategic adaptability
+                'Hamilton': 1.07,        # Very experienced with strategy calls
+                'Alonso': 1.09,          # Master strategist
+                'Leclerc': 1.02,         # Sometimes questions strategy
+                'Sainz': 1.04,           # Good strategic thinking
+                'Russell': 1.05,         # Strong strategic mind
+                'Norris': 1.03,          # Improving strategic awareness
+                'Piastri': 1.02,         # Still developing strategic experience
+                'Perez': 1.03,           # Good tire management helps strategy
+                'Ricciardo': 1.04,       # Experienced with strategy
+                'Hulkenberg': 1.04,      # Experienced with strategy
+                'Tsunoda': 1.01,         # Developing strategic awareness
+                'Albon': 1.03,           # Good strategic awareness
+                'Gasly': 1.02,           # Variable strategic execution
+                'Stroll': 1.01,          # Sometimes struggles with strategy changes
+                'Ocon': 1.02,            # Decent strategic awareness
+                'Bearman': 1.00,         # Rookie strategic experience
+                'Lawson': 1.00,          # Limited F1 strategic experience
+                'Antonelli': 1.00,       # Rookie strategic experience
+                'Bortoleto': 1.00,       # Rookie strategic experience
+                'Doohan': 1.00,          # Rookie strategic experience
+                'Hadjar': 1.00           # Rookie strategic experience
+            }
+            
+            # Get base factors
+            team_strategy = team_strategy_strength.get(team_name, 1.0)
+            driver_adaptability = driver_strategy_adaptability.get(driver_name, 1.0)
+            
+            # Get track importance
+            track_importance = track_strategy_importance.get(circuit_name, 1.0)
+            
+            # Default if not found in the dictionary
+            if track_importance == 1.0:
+                # Set based on circuit type
+                if circuit_type == 'street':
+                    track_importance = 1.08
+                elif circuit_type == 'technical':
+                    track_importance = 1.05
+                elif circuit_type == 'high_speed':
+                    track_importance = 1.02
+                else:  # mixed
+                    track_importance = 1.04
+            
+            # Temperature effects on strategy importance
+            # Higher temperatures generally increase strategic importance due to tire management
+            temp_factor = 1.0
+            if track_temp > 45:
+                temp_factor = 1.08  # Very hot - tire management critical
+            elif track_temp > 35:
+                temp_factor = 1.05  # Hot - significant tire management needed
+            elif track_temp < 20:
+                temp_factor = 1.03  # Cool - warm-up issues possible
+            
+            # Calculate combined strategy factor
+            # More complex tracks with higher strategy importance will magnify team/driver differences
+            strategy_impact = ((team_strategy - 1.0) * 0.6 + (driver_adaptability - 1.0) * 0.4) * track_importance * temp_factor
+            
+            # Convert to final factor (centered around 1.0)
+            strategy_factor = 1.0 + strategy_impact
+            
+            # Ensure within reasonable range
+            return max(0.94, min(1.12, strategy_factor))
+            
+        except Exception as e:
+            logger.error(f"Error calculating strategy factor: {e}")
+            return 1.0  # Default to neutral strategy if calculation fails
+
+    def _get_driver_weather_adaptability(self, driver_name, weather_condition):
+        """
+        Get a driver's specific adaptability to different weather conditions
+        
+        Args:
+            driver_name: Name of the driver
+            weather_condition: Type of weather condition ('wet', 'changing', 'hot', 'cold', 'windy')
+            
+        Returns:
+            Adaptability factor (>1.0 means driver performs better in this condition)
+        """
+        try:
+            # Driver specific weather adaptability factors
+            weather_adaptability = {
+                'wet': {
+                    'Verstappen': 1.12,      # Exceptional in wet conditions
+                    'Hamilton': 1.10,        # Excellent wet weather driver
+                    'Alonso': 1.09,          # Veteran with great wet skills
+                    'Norris': 1.05,          # Good in wet conditions
+                    'Sainz': 1.04,           # Good wet weather adaptability
+                    'Leclerc': 1.02,         # Decent but inconsistent in wet
+                    'Russell': 1.03,         # Good wet driver
+                    'Ocon': 1.01,            # Above average in wet
+                    'Stroll': 1.02,          # Surprisingly good in wet
+                    'Piastri': 1.00,         # Neutral - limited F1 wet experience
+                    'Antonelli': 0.99,       # Rookie - limited F1 wet experience
+                    'Bearman': 0.98,         # Rookie - limited F1 wet experience
+                    'Tsunoda': 0.99,         # Somewhat inconsistent in wet
+                    'Albon': 1.01,           # Slightly above average
+                    'Gasly': 1.01,           # Slightly above average
+                    'Hulkenberg': 1.01,      # Experienced but not exceptional
+                    'Lawson': 0.98,          # Limited F1 wet experience
+                    'Hadjar': 0.98,          # Limited F1 wet experience
+                    'Doohan': 0.97,          # Limited F1 wet experience
+                    'Bortoleto': 0.97,       # Limited F1 wet experience
+                    'Perez': 0.95            # Notable weakness in wet conditions
+                },
+                'changing': {  # Changing conditions (e.g., drying track)
+                    'Verstappen': 1.08,      # Excellent adaptation
+                    'Hamilton': 1.07,        # Very good adaptation
+                    'Alonso': 1.10,          # Master of changing conditions
+                    'Norris': 1.04,          # Good adaptation
+                    'Sainz': 1.06,           # Very good in transitional conditions
+                    'Leclerc': 1.02,         # Decent adaptation
+                    'Russell': 1.03,         # Good adaptation
+                    'Ocon': 1.00,            # Average adaptation
+                    'Stroll': 1.01,          # Slightly above average
+                    'Piastri': 1.00,         # Neutral - still developing
+                    'Antonelli': 0.98,       # Rookie - limited experience
+                    'Bearman': 0.98,         # Rookie - limited experience
+                    'Tsunoda': 0.98,         # Somewhat inconsistent
+                    'Albon': 1.02,           # Good in changing conditions
+                    'Gasly': 1.01,           # Slightly above average
+                    'Hulkenberg': 1.03,      # Experienced in changing conditions
+                    'Lawson': 0.97,          # Limited F1 experience
+                    'Hadjar': 0.97,          # Limited F1 experience
+                    'Doohan': 0.97,          # Limited F1 experience
+                    'Bortoleto': 0.97,       # Limited F1 experience
+                    'Perez': 0.99            # Average in changing conditions
+                },
+                'hot': {  # Hot conditions (track temp > 40°C)
+                    'Verstappen': 1.03,      # Good in hot conditions
+                    'Hamilton': 1.02,        # Historically good in heat
+                    'Alonso': 1.04,          # Experienced in managing hot conditions
+                    'Norris': 0.99,          # Slightly below average
+                    'Sainz': 1.05,           # Very good in hot conditions
+                    'Leclerc': 1.06,         # Excellent in hot conditions
+                    'Russell': 1.00,         # Average in hot conditions
+                    'Ocon': 1.01,            # Slightly above average
+                    'Stroll': 0.98,          # Slightly struggles in heat
+                    'Piastri': 0.99,         # Slightly below average
+                    'Antonelli': 0.98,       # Rookie - limited experience
+                    'Bearman': 0.98,         # Rookie - limited experience
+                    'Tsunoda': 1.02,         # Good in hot conditions
+                    'Albon': 1.03,           # Good in hot conditions
+                    'Gasly': 1.01,           # Slightly above average
+                    'Hulkenberg': 1.00,      # Average
+                    'Lawson': 0.99,          # Limited data
+                    'Hadjar': 0.99,          # Limited data
+                    'Doohan': 0.99,          # Limited data
+                    'Bortoleto': 1.01,       # May handle heat well
+                    'Perez': 1.04            # Very good in hot conditions
+                },
+                'cold': {  # Cold conditions (track temp < 15°C)
+                    'Verstappen': 1.05,      # Good in cold conditions
+                    'Hamilton': 1.01,        # Slightly above average
+                    'Alonso': 1.03,          # Good in cold conditions
+                    'Norris': 1.04,          # Good in cold conditions
+                    'Sainz': 0.99,           # Slightly below average
+                    'Leclerc': 0.97,         # Struggles with cold track temps
+                    'Russell': 1.04,         # Good in cold conditions
+                    'Ocon': 1.00,            # Average
+                    'Stroll': 0.99,          # Slightly below average
+                    'Piastri': 1.01,         # Slightly above average
+                    'Antonelli': 0.98,       # Rookie - limited experience
+                    'Bearman': 0.98,         # Rookie - limited experience
+                    'Tsunoda': 0.98,         # Slightly below average
+                    'Albon': 1.00,           # Average
+                    'Gasly': 1.00,           # Average
+                    'Hulkenberg': 1.02,      # Good in cold conditions
+                    'Lawson': 0.98,          # Limited data
+                    'Hadjar': 0.98,          # Limited data
+                    'Doohan': 0.98,          # Limited data
+                    'Bortoleto': 0.98,       # Limited data
+                    'Perez': 0.96            # Struggles in cold conditions
+                },
+                'windy': {  # Windy conditions
+                    'Verstappen': 1.04,      # Good in windy conditions
+                    'Hamilton': 1.03,        # Good in windy conditions
+                    'Alonso': 1.05,          # Very good in challenging wind
+                    'Norris': 1.01,          # Slightly above average
+                    'Sainz': 1.00,           # Average
+                    'Leclerc': 0.99,         # Slightly below average
+                    'Russell': 1.02,         # Good in windy conditions
+                    'Ocon': 1.00,            # Average
+                    'Stroll': 0.98,          # Slightly below average
+                    'Piastri': 0.99,         # Slightly below average
+                    'Antonelli': 0.97,       # Rookie - limited experience
+                    'Bearman': 0.97,         # Rookie - limited experience
+                    'Tsunoda': 0.96,         # Struggles with wind
+                    'Albon': 1.00,           # Average
+                    'Gasly': 0.99,           # Slightly below average
+                    'Hulkenberg': 1.01,      # Slightly above average
+                    'Lawson': 0.98,          # Limited data
+                    'Hadjar': 0.98,          # Limited data
+                    'Doohan': 0.98,          # Limited data
+                    'Bortoleto': 0.98,       # Limited data
+                    'Perez': 0.98            # Slightly below average
+                }
+            }
+            
+            # Return the adaptability factor (default to 1.0 if not found)
+            return weather_adaptability.get(weather_condition, {}).get(driver_name, 1.0)
+            
+        except Exception as e:
+            logger.error(f"Error getting driver weather adaptability: {e}")
+            return 1.0  # Default to neutral if calculation fails
+    
+    def _calculate_detailed_weather_impact(self, driver_name, team_name, track_info, weather_data):
+        """
+        Calculate a detailed weather impact factor for a driver based on multiple weather conditions
+        
+        Args:
+            driver_name: Driver name
+            team_name: Team name
+            track_info: Dictionary containing track information
+            weather_data: Dictionary containing weather information
+            
+        Returns:
+            Weather impact factor affecting race pace
+        """
+        try:
+            # Extract weather information
+            is_wet = weather_data.get('IsWet', False)
+            rain_intensity = weather_data.get('RainIntensity', 0)
+            track_temp = float(track_info.get('TrackTemp', 25.0))
+            air_temp = float(track_info.get('AirTemp', 22.0))
+            humidity = float(track_info.get('Humidity', 50.0))
+            wind_speed = float(weather_data.get('WindSpeed', 10.0))
+            changing_conditions = weather_data.get('ChangingConditions', False)
+            
+            # Team's weather performance (1.0 is baseline)
+            team_weather_performance = {
+                'Red Bull Racing': {
+                    'wet': 1.05,        # Very good wet performance
+                    'hot': 0.97,        # Some issues in extreme heat
+                    'cold': 1.06,       # Excellent in cold conditions
+                    'windy': 1.04       # Good in windy conditions
+                },
+                'Ferrari': {
+                    'wet': 0.98,        # Slight weakness in wet
+                    'hot': 1.07,        # Excellent in hot conditions
+                    'cold': 0.96,       # Weakness in cold conditions
+                    'windy': 1.00       # Average in windy conditions
+                },
+                'Mercedes': {
+                    'wet': 1.03,        # Good wet performance
+                    'hot': 1.00,        # Average in hot conditions
+                    'cold': 1.03,       # Good in cold conditions
+                    'windy': 1.02       # Good in windy conditions
+                },
+                'McLaren': {
+                    'wet': 1.02,        # Good wet performance
+                    'hot': 1.01,        # Slightly good in hot conditions
+                    'cold': 1.04,       # Very good in cold conditions
+                    'windy': 1.03       # Good in windy conditions
+                },
+                'Aston Martin': {
+                    'wet': 1.01,        # Slightly above average wet
+                    'hot': 0.98,        # Slight weakness in hot conditions
+                    'cold': 1.02,       # Good in cold conditions
+                    'windy': 1.00       # Average in windy conditions
+                },
+                'Alpine': {
+                    'wet': 0.99,        # Slightly below average wet
+                    'hot': 1.02,        # Good in hot conditions
+                    'cold': 0.99,       # Slightly below average cold
+                    'windy': 0.98       # Slight weakness in wind
+                },
+                'Williams': {
+                    'wet': 0.98,        # Weakness in wet
+                    'hot': 0.99,        # Slightly below average hot
+                    'cold': 1.01,       # Slightly above average cold
+                    'windy': 0.97       # Weakness in wind
+                },
+                'Racing Bulls': {
+                    'wet': 1.00,        # Average wet performance
+                    'hot': 1.01,        # Slightly good in hot
+                    'cold': 1.00,       # Average in cold
+                    'windy': 1.00       # Average in windy conditions
+                },
+                'Kick Sauber': {
+                    'wet': 0.99,        # Slightly below average wet
+                    'hot': 0.99,        # Slightly below average hot
+                    'cold': 1.00,       # Average in cold
+                    'windy': 0.99       # Slightly below average in wind
+                },
+                'Haas F1 Team': {
+                    'wet': 0.97,        # Weakness in wet
+                    'hot': 1.03,        # Good in hot conditions
+                    'cold': 0.98,       # Slightly below average cold
+                    'windy': 0.98       # Slightly below average in wind
+                }
+            }
+            
+            # Initialize weather impact
+            weather_impact = 0.0
+            
+            # Wet conditions impact
+            if is_wet or rain_intensity > 0:
+                wet_intensity = max(rain_intensity, 0.5 if is_wet else 0)
+                driver_wet_adaptability = self._get_driver_weather_adaptability(driver_name, 'wet')
+                team_wet_performance = team_weather_performance.get(team_name, {}).get('wet', 1.0)
+                
+                # Combined wet impact
+                wet_impact = ((driver_wet_adaptability - 1.0) * 0.7 + (team_wet_performance - 1.0) * 0.3) * wet_intensity * 0.5
+                weather_impact += wet_impact
+                
+                # Additional impact for changing conditions in wet
+                if changing_conditions:
+                    changing_adaptability = self._get_driver_weather_adaptability(driver_name, 'changing')
+                    changing_impact = (changing_adaptability - 1.0) * 0.3 * wet_intensity
+                    weather_impact += changing_impact
+            
+            # Temperature impact
+            temp_impact = 0.0
+            if track_temp > 40:  # Hot conditions
+                driver_hot_adaptability = self._get_driver_weather_adaptability(driver_name, 'hot')
+                team_hot_performance = team_weather_performance.get(team_name, {}).get('hot', 1.0)
+                temp_impact = ((driver_hot_adaptability - 1.0) * 0.6 + (team_hot_performance - 1.0) * 0.4) * 0.3
+            elif track_temp < 15:  # Cold conditions
+                driver_cold_adaptability = self._get_driver_weather_adaptability(driver_name, 'cold')
+                team_cold_performance = team_weather_performance.get(team_name, {}).get('cold', 1.0)
+                temp_impact = ((driver_cold_adaptability - 1.0) * 0.6 + (team_cold_performance - 1.0) * 0.4) * 0.3
+            
+            weather_impact += temp_impact
+            
+            # Wind impact
+            if wind_speed > 20:  # Significant wind
+                wind_factor = min((wind_speed - 20) / 20, 1.0)  # Scale from 0-1 based on wind over 20km/h
+                driver_wind_adaptability = self._get_driver_weather_adaptability(driver_name, 'windy')
+                team_wind_performance = team_weather_performance.get(team_name, {}).get('windy', 1.0)
+                wind_impact = ((driver_wind_adaptability - 1.0) * 0.6 + (team_wind_performance - 1.0) * 0.4) * wind_factor * 0.2
+                weather_impact += wind_impact
+            
+            # Humidity impact (mainly affects engine and tire temperature)
+            if humidity > 80:  # High humidity
+                humidity_impact = -0.02 if team_name in ['Ferrari', 'Haas F1 Team'] else 0.01
+                weather_impact += humidity_impact
+            
+            # Circuit-specific weather effects
+            circuit_name = track_info.get('CircuitName', 'Unknown')
+            circuit_weather_sensitivity = {
+                'Spa': 1.3,           # Weather very impactful at Spa
+                'Singapore': 1.2,     # Rain in Singapore has big impact
+                'Brazil': 1.2,        # Interlagos weather can be very impactful
+                'Japan': 1.15,        # Suzuka in rain is challenging
+                'Silverstone': 1.15,  # British weather can be challenging
+                'Belgium': 1.15,      # Weather important here
+                'Austria': 1.1,       # Rain can be impactful
+                'Hungary': 1.05,      # Mid-level impact
+                'Monaco': 1.2,        # Very impactful in Monaco
+                'Australia': 1.05,    # Mid-level impact
+                'Canada': 1.15,       # Weather changes can be significant
+                'Abu Dhabi': 0.9,     # Weather rarely a factor
+                'Bahrain': 0.9,       # Dry climate
+                'Saudi Arabia': 0.9,  # Dry climate
+                'Las Vegas': 0.95     # Cold nights but dry
+            }
+            
+            # Apply circuit sensitivity
+            circuit_multiplier = circuit_weather_sensitivity.get(circuit_name, 1.0)
+            weather_impact = weather_impact * circuit_multiplier
+            
+            # Return final impact as a factor centered around 1.0
+            return 1.0 + weather_impact
+            
+        except Exception as e:
+            logger.error(f"Error calculating detailed weather impact: {e}")
+            return 1.0  # Default to neutral if calculation fails
+
+    def _calculate_pit_stop_strategy(self, driver_name, team_name, circuit_name, track_info, weather_data, race_distance=None):
+        """
+        Calculate strategy advantage/disadvantage based on expected pit stop strategy
+        
+        Args:
+            driver_name: Driver name
+            team_name: Team name
+            circuit_name: Circuit name
+            track_info: Dictionary containing track information
+            weather_data: Dictionary containing weather information
+            race_distance: Optional race distance in laps
+            
+        Returns:
+            Pit stop strategy factor affecting race pace
+        """
+        try:
+            # Extract track conditions
+            track_temp = float(track_info.get('TrackTemp', 25.0))
+            track_type = track_info.get('TrackType', 'mixed')
+            is_wet = weather_data.get('IsWet', False)
+            rain_intensity = weather_data.get('RainIntensity', 0)
+            changing_conditions = weather_data.get('ChangingConditions', False)
+            total_laps = race_distance or track_info.get('TotalLaps', 50)
+            
+            # Team pit stop execution quality (average time in seconds - lower is better)
+            pit_execution_time = {
+                'Red Bull Racing': 2.2,      # Excellent pit crew
+                'Ferrari': 2.4,              # Very good pit crew
+                'Mercedes': 2.3,             # Excellent pit crew
+                'McLaren': 2.3,              # Excellent pit crew
+                'Aston Martin': 2.5,         # Good pit crew
+                'Alpine': 2.7,               # Above average pit crew
+                'Williams': 2.8,             # Average pit crew
+                'Racing Bulls': 2.5,         # Good pit crew (RB tech)
+                'Kick Sauber': 2.9,          # Average pit crew
+                'Haas F1 Team': 3.0          # Slightly slower pit crew
+            }
+            
+            # Driver pit entry/exit skill (1.0 is baseline)
+            driver_pit_skill = {
+                'Verstappen': 1.06,          # Excellent pit lane skills
+                'Hamilton': 1.05,            # Excellent pit lane skills
+                'Alonso': 1.07,              # Master of pit strategy
+                'Norris': 1.03,              # Good pit lane skills
+                'Sainz': 1.04,               # Very good pit lane skills
+                'Leclerc': 1.02,             # Good pit lane skills
+                'Russell': 1.04,             # Very good pit lane skills
+                'Ocon': 1.01,                # Above average
+                'Stroll': 0.99,              # Slightly below average
+                'Piastri': 1.01,             # Above average
+                'Antonelli': 0.98,           # Rookie - learning
+                'Bearman': 0.98,             # Rookie - learning
+                'Tsunoda': 0.99,             # Slightly below average
+                'Albon': 1.02,               # Good pit lane skills
+                'Gasly': 1.01,               # Above average
+                'Hulkenberg': 1.03,          # Very good pit lane skills
+                'Lawson': 0.99,              # Slightly below average
+                'Hadjar': 0.98,              # Rookie - learning
+                'Doohan': 0.98,              # Rookie - learning
+                'Bortoleto': 0.98,           # Rookie - learning
+                'Perez': 1.02                # Good pit lane skills
+            }
+            
+            # Team strategic decision-making (1.0 is baseline)
+            team_strategy_quality = {
+                'Red Bull Racing': 1.07,     # Excellent strategy team
+                'Ferrari': 0.96,             # Historical strategy issues
+                'Mercedes': 1.05,            # Very good strategy team
+                'McLaren': 1.04,             # Good strategy team
+                'Aston Martin': 1.03,        # Good strategy team
+                'Alpine': 0.99,              # Average strategy team
+                'Williams': 1.01,            # Above average strategy team
+                'Racing Bulls': 1.02,        # Good strategy team
+                'Kick Sauber': 1.00,         # Average strategy team
+                'Haas F1 Team': 0.98         # Below average strategy team
+            }
+            
+            # Calculate optimal strategy for circuit
+            # High tire degradation tracks typically need more stops
+            track_tire_deg = track_info.get('TireDegradation', 0.5)  # 0.0-1.0 scale
+            
+            # Base number of pit stops - modified by conditions
+            base_pit_stops = 1  # Default 1-stop strategy
+            
+            if track_tire_deg > 0.8:
+                base_pit_stops = 3  # High degradation tracks (like Barcelona in heat)
+            elif track_tire_deg > 0.6:
+                base_pit_stops = 2  # Medium-high degradation
+            
+            # Circuit-specific strategy info
+            circuit_strategy_info = {
+                'Monaco': {'optimal_stops': 1, 'undercut_power': 0.2, 'overcut_power': 0.9},  # Overcut very powerful
+                'Singapore': {'optimal_stops': 1, 'undercut_power': 0.3, 'overcut_power': 0.8},  # Overcut powerful
+                'Hungary': {'optimal_stops': 1, 'undercut_power': 0.5, 'overcut_power': 0.6},
+                'Barcelona': {'optimal_stops': 2, 'undercut_power': 0.8, 'overcut_power': 0.3},  # Undercut powerful
+                'Silverstone': {'optimal_stops': 2, 'undercut_power': 0.7, 'overcut_power': 0.4},
+                'Monza': {'optimal_stops': 1, 'undercut_power': 0.9, 'overcut_power': 0.2},  # Undercut very powerful
+                'Spa': {'optimal_stops': 2, 'undercut_power': 0.7, 'overcut_power': 0.4},
+                'Bahrain': {'optimal_stops': 2, 'undercut_power': 0.8, 'overcut_power': 0.3},
+                'Jeddah': {'optimal_stops': 1, 'undercut_power': 0.7, 'overcut_power': 0.4},
+                'Australia': {'optimal_stops': 1, 'undercut_power': 0.6, 'overcut_power': 0.5},
+            }
+            
+            # Get circuit-specific strategy data or use defaults
+            circuit_data = circuit_strategy_info.get(circuit_name, {
+                'optimal_stops': base_pit_stops,
+                'undercut_power': 0.6,
+                'overcut_power': 0.5
+            })
+            
+            # Adjust for wet conditions
+            if is_wet or rain_intensity > 0.5:
+                # Wet races often have more variable strategies and more stops
+                circuit_data['optimal_stops'] += 1
+                
+                # Wet strategy complexity (opportunity for skilled strategic teams)
+                wet_strategy_complexity = 1.5
+                
+                # Apply greater advantage to teams with good wet strategy
+                team_strategic_factor = ((team_strategy_quality.get(team_name, 1.0) - 1.0) * wet_strategy_complexity) + 1.0
+            else:
+                team_strategic_factor = team_strategy_quality.get(team_name, 1.0)
+            
+            # Pit stop execution advantage (comparing to average of 2.6s)
+            team_execution_time = pit_execution_time.get(team_name, 2.6)
+            time_advantage_per_stop = (2.6 - team_execution_time) * 0.01  # Convert time saving to race pace advantage
+            execution_advantage = time_advantage_per_stop * circuit_data['optimal_stops']
+            
+            # Driver's ability to execute strategy (pit entry/exit)
+            driver_execution_factor = driver_pit_skill.get(driver_name, 1.0)
+            
+            # Adaptability to changing conditions (mid-race)
+            adaptability_factor = 1.0
+            if changing_conditions:
+                # Teams that can adapt strategies mid-race gain advantage
+                adaptability_factor = team_strategy_quality.get(team_name, 1.0) ** 1.5
+                
+                # Driver adaptability also matters
+                changing_adaptability = self._get_driver_weather_adaptability(driver_name, 'changing')
+                adaptability_factor *= changing_adaptability
+            
+            # Calculate pit window optimization (most critical for 1-stop races)
+            # Teams that can extend stints gain advantage at some tracks
+            pit_window_optimization = 0.0
+            
+            # Tracks where stint length flexibility matters more
+            if circuit_name in ['Monaco', 'Singapore', 'Hungary', 'Baku']:
+                # Driver tire management is key for extending stints
+                tire_management = driver_pit_skill.get(driver_name, 1.0)
+                team_capability = team_strategy_quality.get(team_name, 1.0)
+                pit_window_optimization = (tire_management * 0.7 + team_capability * 0.3 - 1.0) * 0.03
+            
+            # Team historical performance with this race's most likely strategy type
+            strategy_type_familiarity = 0.0
+            
+            # Certain teams excel at specific strategy types
+            if circuit_data['optimal_stops'] == 1 and team_name == 'Ferrari':
+                strategy_type_familiarity = 0.02  # Ferrari often good at 1-stop
+            elif circuit_data['optimal_stops'] >= 2 and team_name == 'Red Bull Racing':
+                strategy_type_familiarity = 0.03  # Red Bull excels at multi-stop
+            elif circuit_data['undercut_power'] > 0.7 and team_name == 'Mercedes':
+                strategy_type_familiarity = 0.02  # Mercedes good at executing undercuts
+            
+            # Apply overall strategy factor
+            overall_strategy_factor = (
+                1.0 + 
+                ((team_strategic_factor - 1.0) * 0.4) +  # Strategic decision weight
+                (execution_advantage * 0.3) +            # Pit stop execution weight
+                ((driver_execution_factor - 1.0) * 0.15) +  # Driver execution weight
+                ((adaptability_factor - 1.0) * 0.1) +    # Adaptability weight
+                (pit_window_optimization * 0.1) +        # Pit window optimization
+                (strategy_type_familiarity)              # Team's familiarity with strategy type
+            )
+            
+            # Ensure return value is in reasonable range
+            return max(0.93, min(overall_strategy_factor, 1.07))
+            
+        except Exception as e:
+            logger.error(f"Error calculating pit stop strategy: {e}")
+            return 1.0  # Default to neutral if calculation fails
+
+    def generate_features(self, driver_data_list, track_info, weather_data):
+        """
+        Generate features for the race prediction model
+        
+        Args:
+            driver_data_list: List of dictionaries containing driver information
+            track_info: Dictionary containing track information
+            weather_data: Dictionary containing weather information
+            
+        Returns:
+            DataFrame containing the features for each driver
+        """
+        features = []
+        
+        for driver_data in driver_data_list:
+            try:
+                # Extract basic information
+                driver_name = driver_data.get('Driver', 'Unknown')
+                team_name = driver_data.get('Team', 'Unknown')
+                qualifying_position = float(driver_data.get('QualifyingPosition', 20))
+                
+                # Calculate race pace
+                race_pace = self._calculate_race_pace(driver_data, track_info, weather_data)
+                
+                # Get circuit info
+                circuit_name = track_info.get('CircuitName', 'Unknown')
+                circuit_type = track_info.get('TrackType', 'mixed')
+                
+                # Calculate new factors
+                adaptation_factor = self._calculate_driver_adaptation(
+                    driver_name, 
+                    team_name, 
+                    track_info.get('RaceNumber', 1)
+                )
+                
+                track_performance = self._calculate_track_specific_performance(
+                    driver_name, 
+                    circuit_name, 
+                    circuit_type
+                )
+                
+                team_strategy_factor = self._calculate_strategy_factor(
+                    driver_name,
+                    team_name,
+                    circuit_name,
+                    circuit_type,
+                    float(track_info.get('TrackTemp', 25.0)),
+                    float(track_info.get('AirTemp', 22.0))
+                )
+                
+                # Calculate new detailed weather impact
+                weather_impact_factor = self._calculate_detailed_weather_impact(
+                    driver_name, 
+                    team_name, 
+                    track_info, 
+                    weather_data
+                )
+                
+                # Calculate new pit stop strategy factor
+                pit_strategy_factor = self._calculate_pit_stop_strategy(
+                    driver_name, 
+                    team_name, 
+                    circuit_name, 
+                    track_info, 
+                    weather_data
+                )
+                
+                # Calculate recent form
+                recent_form = self._calculate_recent_form(driver_data)
+                
+                # Extract team characteristics
+                team_chars = self.team_characteristics.get(team_name, {})
+                power_unit = team_chars.get('power_unit_performance', 0.75)
+                aero = team_chars.get('aerodynamic_efficiency', 0.75)
+                mechanical = team_chars.get('mechanical_grip', 0.75)
+                tire_management = team_chars.get('tire_wear_management', 0.75)
+                
+                # Calculate team development at current race
+                race_number = max(1, min(track_info.get('RaceNumber', 1), 23))
+                season_progress = race_number / 23
+                development_factor = 1.0
+                
+                if team_name in self.team_development_rate:
+                    base_development = self.team_development_rate[team_name]
+                    if season_progress < 0.5:
+                        development_factor = 1.0 + (base_development * season_progress * 1.5)
+                    else:
+                        mid_season_dev = 1.0 + (base_development * 0.5 * 1.5)
+                        remaining_dev = base_development * 0.5
+                        late_season_prog = (season_progress - 0.5) * 2
+                        development_factor = mid_season_dev + (remaining_dev * late_season_prog)
+                
+                # Create feature dictionary
+                driver_features = {
+                    'Driver': driver_name,
+                    'Team': team_name,
+                    'QualifyingPosition': qualifying_position,
+                    'RacePace': race_pace,
+                    'RecentForm': recent_form,
+                    'PowerUnit': power_unit * development_factor,
+                    'Aerodynamics': aero * development_factor,
+                    'MechanicalGrip': mechanical * development_factor,
+                    'TireManagement': tire_management,
+                    'DriverAdaptation': adaptation_factor,
+                    'TrackSpecificPerformance': track_performance,
+                    'TeamStrategyFactor': team_strategy_factor,
+                    'WeatherImpactFactor': weather_impact_factor,
+                    'PitStopStrategyFactor': pit_strategy_factor,
+                    'DevelopmentFactor': development_factor
+                }
+                
+                # Add detailed weather features
+                track_temp = float(track_info.get('TrackTemp', 25.0))
+                is_wet = weather_data.get('IsWet', False)
+                rain_intensity = weather_data.get('RainIntensity', 0)
+                changing_conditions = weather_data.get('ChangingConditions', False)
+                
+                # Add weather condition-specific adaptability
+                if is_wet or rain_intensity > 0:
+                    driver_features['WetAdaptability'] = self._get_driver_weather_adaptability(driver_name, 'wet')
+                    driver_features['RainIntensity'] = rain_intensity if rain_intensity > 0 else (0.5 if is_wet else 0)
+                else:
+                    driver_features['WetAdaptability'] = 0
+                    driver_features['RainIntensity'] = 0
+                
+                if changing_conditions:
+                    driver_features['ChangingConditionsAdaptability'] = self._get_driver_weather_adaptability(driver_name, 'changing')
+                else:
+                    driver_features['ChangingConditionsAdaptability'] = 0
+                
+                if track_temp > 40:
+                    driver_features['HotConditionsAdaptability'] = self._get_driver_weather_adaptability(driver_name, 'hot')
+                else:
+                    driver_features['HotConditionsAdaptability'] = 0
+                
+                if track_temp < 15:
+                    driver_features['ColdConditionsAdaptability'] = self._get_driver_weather_adaptability(driver_name, 'cold')
+                else:
+                    driver_features['ColdConditionsAdaptability'] = 0
+                
+                if float(weather_data.get('WindSpeed', 10.0)) > 20:
+                    driver_features['WindyConditionsAdaptability'] = self._get_driver_weather_adaptability(driver_name, 'windy')
+                else:
+                    driver_features['WindyConditionsAdaptability'] = 0
+                
+                # Add track-specific features
+                driver_features['TrackType'] = {
+                    'high_speed': 1,
+                    'technical': 2,
+                    'street': 3,
+                    'mixed': 4
+                }.get(circuit_type, 4)
+                
+                # Add additional track and weather features
+                driver_features['OvertakingDifficulty'] = track_info.get('OvertakingDifficulty', 0.5)
+                driver_features['TrackTemp'] = float(track_info.get('TrackTemp', 25.0))
+                driver_features['AirTemp'] = float(track_info.get('AirTemp', 22.0))
+                driver_features['WindSpeed'] = float(weather_data.get('WindSpeed', 10.0))
+                driver_features['Humidity'] = float(track_info.get('Humidity', 50.0))
+                driver_features['ChangingConditions'] = 1 if changing_conditions else 0
+                
+                features.append(driver_features)
+                
+            except Exception as e:
+                logger.error(f"Error generating features for {driver_data.get('Driver', 'Unknown')}: {e}")
+                # Add minimal features if error occurs
+                features.append({
+                    'Driver': driver_data.get('Driver', 'Unknown'),
+                    'Team': driver_data.get('Team', 'Unknown'),
+                    'QualifyingPosition': float(driver_data.get('QualifyingPosition', 20)),
+                    'RacePace': 90.0  # Default race pace
+                })
+        
+        # Convert to DataFrame
+        feature_df = pd.DataFrame(features)
+        
+        # Handle non-numeric columns
+        non_numeric_cols = ['Driver', 'Team']
+        feature_matrix = feature_df.drop(columns=non_numeric_cols)
+        
+        # Check for NaN values and replace with defaults
+        feature_matrix = feature_matrix.fillna(0)
+        
+        return feature_df, feature_matrix
