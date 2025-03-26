@@ -10,46 +10,390 @@ logger = logging.getLogger("F1Predictor.Features")
 
 class F1FeatureEngineer:
     def __init__(self):
-        """Initialize the feature engineer"""
+        """Initialize the feature engineer with enhanced parameters"""
         self.scaler = StandardScaler()
         
-        # Track characteristics weights
+        # Enhanced track characteristics weights with more granular factors
         self.track_weights = {
             'high_speed': {
-                'straight_speed': 0.6,
-                'corner_speed': 0.4,
-                'tire_management': 0.3,
-                'brake_management': 0.2
+                'straight_speed': 0.65,
+                'corner_speed': 0.35,
+                'tire_management': 0.40,
+                'brake_management': 0.20,
+                'overtaking_difficulty': 0.25,
+                'track_evolution': 0.35
             },
             'technical': {
-                'straight_speed': 0.3,
-                'corner_speed': 0.7,
-                'tire_management': 0.4,
-                'brake_management': 0.5
+                'straight_speed': 0.25,
+                'corner_speed': 0.75,
+                'tire_management': 0.50,
+                'brake_management': 0.60,
+                'overtaking_difficulty': 0.45,
+                'track_evolution': 0.30
             },
             'street': {
-                'straight_speed': 0.4,
-                'corner_speed': 0.6,
-                'tire_management': 0.5,
-                'brake_management': 0.6
+                'straight_speed': 0.35,
+                'corner_speed': 0.65,
+                'tire_management': 0.60,
+                'brake_management': 0.70,
+                'overtaking_difficulty': 0.55,
+                'track_evolution': 0.45
             }
         }
         
-        # Weather impact factors
+        # Enhanced weather impact factors with more detailed conditions
         self.weather_impact = {
             'temperature': {
-                'tire_performance': 0.4,
-                'engine_performance': 0.3,
-                'driver_performance': 0.3
+                'tire_performance': 0.50,
+                'engine_performance': 0.40,
+                'driver_performance': 0.40,
+                'track_evolution': 0.30,
+                'brake_performance': 0.25
             },
             'humidity': {
-                'engine_performance': 0.4,
-                'tire_performance': 0.3,
-                'brake_performance': 0.3
+                'engine_performance': 0.50,
+                'tire_performance': 0.40,
+                'brake_performance': 0.40,
+                'track_grip': 0.30,
+                'driver_comfort': 0.25
             },
             'wind': {
-                'straight_speed': 0.5,
-                'corner_stability': 0.5
+                'straight_speed': 0.60,
+                'corner_stability': 0.60,
+                'aero_efficiency': 0.40,
+                'tire_temperatures': 0.25
+            },
+            'rain': {
+                'visibility': 0.45,
+                'track_grip': 0.55,
+                'tire_strategy': 0.50,
+                'driver_skill_wet': 0.65,
+                'brake_performance': 0.40
+            }
+        }
+
+        # Enhanced driver characteristics with more detailed factors
+        self.driver_characteristics = {
+            'Verstappen': {
+                'wet_performance': 1.18,
+                'tire_management': 1.15,
+                'race_craft': 1.18,
+                'qualifying_pace': 1.15,
+                'consistency': 1.18,
+                'adaptability': 1.18,
+                'defensive_skill': 1.15,
+                'aggressive_style': 1.12
+            },
+            'Hamilton': {
+                'wet_performance': 1.18,
+                'tire_management': 1.18,
+                'race_craft': 1.15,
+                'qualifying_pace': 1.12,
+                'consistency': 1.15,
+                'adaptability': 1.15,
+                'defensive_skill': 1.12,
+                'aggressive_style': 1.10
+            },
+            'Leclerc': {
+                'wet_performance': 1.10,
+                'tire_management': 1.08,
+                'race_craft': 1.12,
+                'qualifying_pace': 1.18,
+                'consistency': 1.08,
+                'adaptability': 1.12,
+                'defensive_skill': 1.10,
+                'aggressive_style': 1.15
+            },
+            'Norris': {
+                'wet_performance': 1.15,
+                'tire_management': 1.12,
+                'race_craft': 1.15,
+                'qualifying_pace': 1.15,
+                'consistency': 1.12,
+                'adaptability': 1.15,
+                'defensive_skill': 1.12,
+                'aggressive_style': 1.12
+            },
+            'Russell': {
+                'wet_performance': 1.12,
+                'tire_management': 1.10,
+                'race_craft': 1.10,
+                'qualifying_pace': 1.12,
+                'consistency': 1.12,
+                'adaptability': 1.10,
+                'defensive_skill': 1.10,
+                'aggressive_style': 1.08
+            },
+            'Piastri': {
+                'wet_performance': 1.10,
+                'tire_management': 1.10,
+                'race_craft': 1.12,
+                'qualifying_pace': 1.15,
+                'consistency': 1.10,
+                'adaptability': 1.12,
+                'defensive_skill': 1.08,
+                'aggressive_style': 1.12
+            },
+            'Sainz': {
+                'wet_performance': 1.12,
+                'tire_management': 1.15,
+                'race_craft': 1.15,
+                'qualifying_pace': 1.12,
+                'consistency': 1.15,
+                'adaptability': 1.12,
+                'defensive_skill': 1.15,
+                'aggressive_style': 1.10
+            }
+        }
+
+        # Enhanced circuit characteristics with more detailed factors
+        self.circuit_characteristics = {
+            'Bahrain': {
+                'overtaking_zones': 3,
+                'tire_deg_factor': 1.25,
+                'track_evolution': 1.18,
+                'weather_variability': 1.15,
+                'straight_speed_importance': 0.65,
+                'corner_speed_importance': 0.75,
+                'brake_wear': 1.20,
+                'engine_stress': 1.15,
+                'sector_characteristics': {
+                    'S1': {'type': 'technical', 'corners': 4, 'key_feature': 'heavy_braking'},
+                    'S2': {'type': 'high_speed', 'corners': 6, 'key_feature': 'flowing_corners'},
+                    'S3': {'type': 'mixed', 'corners': 5, 'key_feature': 'traction_zones'}
+                }
+            },
+            'Saudi Arabia': {
+                'overtaking_zones': 3,
+                'tire_deg_factor': 1.15,
+                'track_evolution': 1.20,
+                'weather_variability': 1.10,
+                'straight_speed_importance': 0.70,
+                'corner_speed_importance': 0.65,
+                'brake_wear': 1.15,
+                'engine_stress': 1.20,
+                'sector_characteristics': {
+                    'S1': {'type': 'high_speed', 'corners': 7, 'key_feature': 'walls'},
+                    'S2': {'type': 'technical', 'corners': 8, 'key_feature': 'precision'},
+                    'S3': {'type': 'high_speed', 'corners': 5, 'key_feature': 'slipstream'}
+                }
+            },
+            'Australia': {
+                'overtaking_zones': 2,
+                'tire_deg_factor': 1.10,
+                'track_evolution': 1.15,
+                'weather_variability': 1.25,
+                'straight_speed_importance': 0.60,
+                'corner_speed_importance': 0.70,
+                'brake_wear': 1.10,
+                'engine_stress': 1.10,
+                'sector_characteristics': {
+                    'S1': {'type': 'mixed', 'corners': 5, 'key_feature': 'chicanes'},
+                    'S2': {'type': 'high_speed', 'corners': 4, 'key_feature': 'flowing'},
+                    'S3': {'type': 'technical', 'corners': 7, 'key_feature': 'stop_start'}
+                }
+            }
+        }
+
+        # Enhanced team performance characteristics
+        self.team_characteristics = {
+            'Red Bull Racing': {
+                'aero_efficiency': 1.20,
+                'power_unit': 1.18,
+                'tire_management': 1.15,
+                'race_pace': 1.20,
+                'qualifying_pace': 1.18,
+                'development_rate': 1.15,
+                'high_speed': 1.18,
+                'low_speed': 1.15,
+                'wet_performance': 1.18,
+                'reliability': 1.15
+            },
+            'Ferrari': {
+                'aero_efficiency': 1.15,
+                'power_unit': 1.15,
+                'tire_management': 1.12,
+                'race_pace': 1.15,
+                'qualifying_pace': 1.18,
+                'development_rate': 1.12,
+                'high_speed': 1.15,
+                'low_speed': 1.12,
+                'wet_performance': 1.12,
+                'reliability': 1.12
+            },
+            'McLaren': {
+                'aero_efficiency': 1.15,
+                'power_unit': 1.12,
+                'tire_management': 1.10,
+                'race_pace': 1.12,
+                'qualifying_pace': 1.15,
+                'development_rate': 1.15,
+                'high_speed': 1.15,
+                'low_speed': 1.12,
+                'wet_performance': 1.12,
+                'reliability': 1.15
+            },
+            'Mercedes': {
+                'aero_efficiency': 1.12,
+                'power_unit': 1.15,
+                'tire_management': 1.12,
+                'race_pace': 1.12,
+                'qualifying_pace': 1.12,
+                'development_rate': 1.12,
+                'high_speed': 1.12,
+                'low_speed': 1.15,
+                'wet_performance': 1.12,
+                'reliability': 1.15
+            }
+        }
+        
+        # Enhanced track evolution characteristics
+        self.track_evolution = {
+            'high_grip': {
+                'initial_grip': 0.85,
+                'evolution_rate': 0.02,
+                'rubber_buildup': 0.015,
+                'temperature_sensitivity': 0.012,
+                'rain_impact': -0.03
+            },
+            'medium_grip': {
+                'initial_grip': 0.75,
+                'evolution_rate': 0.025,
+                'rubber_buildup': 0.02,
+                'temperature_sensitivity': 0.015,
+                'rain_impact': -0.04
+            },
+            'low_grip': {
+                'initial_grip': 0.65,
+                'evolution_rate': 0.03,
+                'rubber_buildup': 0.025,
+                'temperature_sensitivity': 0.02,
+                'rain_impact': -0.05
+            }
+        }
+        
+        # Enhanced tire degradation modeling
+        self.tire_characteristics = {
+            'soft': {
+                'initial_grip': 1.15,
+                'deg_rate': 0.012,
+                'optimal_window': {'min': 85, 'max': 105},
+                'working_range': {'min': 75, 'max': 115},
+                'graining_risk': 0.15,
+                'wet_performance': 0.85
+            },
+            'medium': {
+                'initial_grip': 1.08,
+                'deg_rate': 0.008,
+                'optimal_window': {'min': 90, 'max': 110},
+                'working_range': {'min': 80, 'max': 120},
+                'graining_risk': 0.10,
+                'wet_performance': 0.90
+            },
+            'hard': {
+                'initial_grip': 1.02,
+                'deg_rate': 0.005,
+                'optimal_window': {'min': 95, 'max': 115},
+                'working_range': {'min': 85, 'max': 125},
+                'graining_risk': 0.05,
+                'wet_performance': 0.95
+            }
+        }
+
+        # Enhanced Red Bull specific characteristics
+        self.red_bull_characteristics = {
+            'race_pace_boost': {
+                'qualifying_to_race': 1.25,  # Significant improvement from qualifying to race
+                'tire_management': 1.20,
+                'strategy_execution': 1.18,
+                'development_curve': 1.15
+            },
+            'verstappen_specific': {
+                'race_craft_multiplier': 1.30,
+                'tire_management_boost': 1.25,
+                'qualifying_recovery': 1.28,
+                'wet_condition_boost': 1.25,
+                'track_evolution_adaptation': 1.20
+            },
+            'perez_specific': {
+                'race_craft_multiplier': 1.15,
+                'tire_management_boost': 1.18,
+                'qualifying_recovery': 1.15,
+                'wet_condition_boost': 1.12,
+                'track_evolution_adaptation': 1.15
+            }
+        }
+        
+        # Enhanced track evolution modeling
+        self.track_evolution_detailed = {
+            'grip_progression': {
+                'initial_phase': {
+                    'duration': 0.2,  # First 20% of race
+                    'grip_increase': 0.015,
+                    'line_sensitivity': 1.2
+                },
+                'middle_phase': {
+                    'duration': 0.6,  # Middle 60% of race
+                    'grip_increase': 0.008,
+                    'line_sensitivity': 1.1
+                },
+                'final_phase': {
+                    'duration': 0.2,  # Final 20% of race
+                    'grip_increase': 0.005,
+                    'line_sensitivity': 1.05
+                }
+            },
+            'temperature_impact': {
+                'track_temp_optimal': 35,
+                'air_temp_optimal': 25,
+                'temp_sensitivity': 0.008,
+                'temp_recovery_rate': 0.005
+            },
+            'rubber_evolution': {
+                'buildup_rate': 0.012,
+                'cleaning_effect': -0.02,
+                'optimal_level': 0.85
+            }
+        }
+        
+        # Enhanced tire performance modeling
+        self.tire_performance_detailed = {
+            'compound_characteristics': {
+                'soft': {
+                    'peak_grip': 1.18,
+                    'optimal_window': {'min': 85, 'max': 105},
+                    'working_range': {'min': 75, 'max': 115},
+                    'deg_phases': {
+                        'initial': {'rate': 0.015, 'duration': 0.2},
+                        'steady': {'rate': 0.010, 'duration': 0.6},
+                        'cliff': {'rate': 0.020, 'duration': 0.2}
+                    }
+                },
+                'medium': {
+                    'peak_grip': 1.12,
+                    'optimal_window': {'min': 90, 'max': 110},
+                    'working_range': {'min': 80, 'max': 120},
+                    'deg_phases': {
+                        'initial': {'rate': 0.010, 'duration': 0.2},
+                        'steady': {'rate': 0.007, 'duration': 0.6},
+                        'cliff': {'rate': 0.015, 'duration': 0.2}
+                    }
+                },
+                'hard': {
+                    'peak_grip': 1.08,
+                    'optimal_window': {'min': 95, 'max': 115},
+                    'working_range': {'min': 85, 'max': 125},
+                    'deg_phases': {
+                        'initial': {'rate': 0.007, 'duration': 0.2},
+                        'steady': {'rate': 0.005, 'duration': 0.6},
+                        'cliff': {'rate': 0.010, 'duration': 0.2}
+                    }
+                }
+            },
+            'track_condition_impact': {
+                'green': {'grip_factor': 0.92, 'deg_multiplier': 1.15},
+                'rubbered': {'grip_factor': 1.05, 'deg_multiplier': 0.95},
+                'optimal': {'grip_factor': 1.08, 'deg_multiplier': 0.90}
             }
         }
 
@@ -1288,7 +1632,7 @@ class F1FeatureEngineer:
 
         # Calculate race pace score
         features["RacePaceScore"] = features.apply(
-            lambda x: self._calculate_race_pace(x),
+            lambda x: self._calculate_race_pace(x, x["Position"], track_info, self._get_weather_conditions(track_info.get('circuit_name', ''))),
             axis=1,
         )
 
@@ -1417,139 +1761,267 @@ class F1FeatureEngineer:
             logger.error(f"Error calculating DNF probability: {e}")
             return 0.0005  # Return base DNF probability in case of error
 
-    def _calculate_race_pace(self, driver_data):
-        # Base weights for different performance aspects
-        base_weights = {
-            'qualifying': 0.30,      # Maintained qualifying weight
-            'driver_pace': 0.35,     # Maintained driver pace importance
-            'consistency': 0.20,     # Maintained consistency factor
-            'adaptability': 0.15     # Maintained adaptability factor
-        }
-
-        # Team-specific race pace factors - further refined
-        team_race_pace_factors = {
-            'Ferrari': {
-                'qualifying_weight': 0.32,
-                'race_pace_boost': 1.12,
-                'tire_management': 1.08,
-                'development_factor': 1.05
-            },
-            'Red Bull': {
-                'qualifying_weight': 0.30,
-                'race_pace_boost': 1.15,
-                'tire_management': 1.12,
-                'development_factor': 1.08
-            },
-            'McLaren': {
-                'qualifying_weight': 0.42,    # Further increased qualifying weight
-                'race_pace_boost': 1.18,      # Increased race pace boost
-                'tire_management': 1.12,      # Improved tire management
-                'development_factor': 1.10    # Increased development factor
-            },
-            'Mercedes': {
-                'qualifying_weight': 0.38,    # Adjusted qualifying weight
-                'race_pace_boost': 1.15,      # Maintained race pace boost
-                'tire_management': 1.10,      # Maintained tire management
-                'development_factor': 1.06    # Maintained development factor
-            },
-            'Aston Martin': {
-                'qualifying_weight': 0.32,
-                'race_pace_boost': 1.06,
-                'tire_management': 1.05,
-                'development_factor': 1.03
-            },
-            'Alpine': {
-                'qualifying_weight': 0.33,
-                'race_pace_boost': 1.04,
-                'tire_management': 1.03,
-                'development_factor': 1.02
-            },
-            'Williams': {
-                'qualifying_weight': 0.34,
-                'race_pace_boost': 1.03,
-                'tire_management': 1.02,
-                'development_factor': 1.02
-            },
-            'Racing Bulls': {
-                'qualifying_weight': 0.33,
-                'race_pace_boost': 1.04,
-                'tire_management': 1.03,
-                'development_factor': 1.02
-            },
-            'Kick Sauber': {
-                'qualifying_weight': 0.34,
-                'race_pace_boost': 1.02,
-                'tire_management': 1.02,
-                'development_factor': 1.01
-            },
-            'Haas F1 Team': {
-                'qualifying_weight': 0.34,
-                'race_pace_boost': 1.02,
-                'tire_management': 1.01,
-                'development_factor': 1.01
+    def _calculate_race_pace(self, driver_data, qualifying_position, track_info, weather_conditions):
+        """Enhanced race pace calculation with improved Red Bull and track evolution modeling"""
+        try:
+            # Get driver name and team
+            driver_name = driver_data.get('Abbreviation', '') or driver_data.get('BroadcastName', '')
+            if isinstance(driver_name, pd.Series):
+                driver_name = driver_name.iloc[0] if not driver_name.empty else ''
+            
+            team = driver_data.get('TeamName', '')
+            if isinstance(team, pd.Series):
+                team = team.iloc[0] if not team.empty else ''
+            
+            # Get driver characteristics with enhanced defaults
+            driver_chars = self.driver_characteristics.get(driver_name, {
+                'wet_performance': 1.0,
+                'tire_management': 1.0,
+                'race_craft': 1.0,
+                'qualifying_pace': 1.0,
+                'consistency': 1.0,
+                'adaptability': 1.0,
+                'defensive_skill': 1.0,
+                'aggressive_style': 1.0
+            })
+            
+            # Calculate recent form with enhanced factors
+            recent_form = self._calculate_recent_form(driver_data)
+            
+            # Enhanced base weights for different aspects
+            base_weights = {
+                'qualifying_position': 0.30,  # Balanced weight for qualifying
+                'recent_form': 0.25,         # Significant importance of recent form
+                'track_specific': 0.25,      # Increased track importance
+                'weather_impact': 0.20       # Enhanced weather consideration
             }
-        }
-
-        # Driver-specific adjustments - refined based on recent performance
-        driver_specific_factors = {
-            # Top tier - proven race winners
-            'VER': {'race_craft': 1.10, 'consistency': 1.08, 'adaptability': 1.08},
-            'HAM': {'race_craft': 1.08, 'consistency': 1.08, 'adaptability': 1.08},
-            'LEC': {'race_craft': 1.08, 'consistency': 1.06, 'adaptability': 1.07},
             
-            # Strong performers - regular podium contenders
-            'SAI': {'race_craft': 1.06, 'consistency': 1.07, 'adaptability': 1.06},
-            'NOR': {'race_craft': 1.10, 'consistency': 1.08, 'adaptability': 1.08},  # Increased Norris's factors
-            'RUS': {'race_craft': 1.05, 'consistency': 1.06, 'adaptability': 1.05},  # Adjusted Russell's factors
+            # Enhanced qualifying performance calculation
+            quali_factor = 1 + (20 - qualifying_position) / 25  # Adjusted ratio
+            if qualifying_position <= 3:
+                quali_factor *= 1.18  # Increased boost for top 3
+            elif qualifying_position <= 6:
+                quali_factor *= 1.12  # Moderate boost for top 6
+            elif qualifying_position <= 10:
+                quali_factor *= 1.05  # Small boost for top 10
             
-            # Solid midfield - consistent point scorers
-            'PIA': {'race_craft': 1.08, 'consistency': 1.07, 'adaptability': 1.07},  # Increased Piastri's factors
-            'ALO': {'race_craft': 1.07, 'consistency': 1.05, 'adaptability': 1.06},
-            'OCO': {'race_craft': 1.04, 'consistency': 1.04, 'adaptability': 1.04},
+            # Enhanced weather impact calculation
+            weather_factor = 1.0
+            if weather_conditions.get('rain', 0) > 0:
+                rain_intensity = weather_conditions.get('rain', 0) / 100
+                weather_factor *= (1 + (driver_chars['wet_performance'] - 1) * (1 + rain_intensity))
+                weather_factor *= (1 + rain_intensity * 0.25)
             
-            # Developing talents
-            'ALB': {'race_craft': 1.04, 'consistency': 1.03, 'adaptability': 1.04},
-            'TSU': {'race_craft': 1.03, 'consistency': 1.02, 'adaptability': 1.03},
-            'BOT': {'race_craft': 1.04, 'consistency': 1.04, 'adaptability': 1.03}
-        }
-
-        # Get team-specific factors with balanced defaults
-        team = driver_data['TeamName']
-        team_factors = team_race_pace_factors.get(team, {
-            'qualifying_weight': base_weights['qualifying'],
-            'race_pace_boost': 1.0,
-            'tire_management': 1.0,
-            'development_factor': 1.0
-        })
-
-        # Calculate base race pace with more emphasis on recent performance
-        qualifying_score = driver_data['Position'] if 'Position' in driver_data else driver_data.get('GridPosition', 0)
-        driver_pace = driver_data.get('DriverPace', 0)
-        recent_performance = driver_data.get('RecentPerformance', qualifying_score)
-        
-        # Calculate weighted race pace
-        race_pace = (
-            qualifying_score * team_factors['qualifying_weight'] +
-            driver_pace * base_weights['driver_pace'] +
-            recent_performance * base_weights['consistency']
-        )
-
-        # Apply team factors with balanced impact
-        race_pace *= team_factors['race_pace_boost']
-        race_pace *= team_factors['tire_management']
-        race_pace *= team_factors['development_factor']
-
-        # Apply driver-specific factors if available
-        driver_code = driver_data.get('DriverCode', '')
-        if driver_code in driver_specific_factors:
-            driver_factors = driver_specific_factors[driver_code]
-            race_pace *= (
-                driver_factors['race_craft'] * 0.4 +
-                driver_factors['consistency'] * 0.3 +
-                driver_factors['adaptability'] * 0.3
+            # Enhanced temperature impact
+            temp = weather_conditions.get('temperature', 20)
+            temp_factor = 1.0
+            if temp > 35:  # Very hot conditions
+                temp_factor *= (1 + driver_chars['tire_management'] * 0.15)
+            elif temp > 30:  # Hot conditions
+                temp_factor *= (1 + driver_chars['tire_management'] * 0.10)
+            elif temp < 15:  # Cold conditions
+                temp_factor *= (1 + driver_chars['adaptability'] * 0.12)
+            
+            # Enhanced humidity impact
+            humidity = weather_conditions.get('humidity', 60)
+            if humidity > 80:
+                temp_factor *= (1 - 0.05)  # High humidity penalty
+            
+            weather_factor *= temp_factor
+            
+            # Enhanced track-specific adjustments
+            circuit = track_info.get('circuit_name', '')
+            circuit_chars = self.circuit_characteristics.get(circuit, {
+                'overtaking_zones': 2,
+                'tire_deg_factor': 1.0,
+                'track_evolution': 1.0,
+                'weather_variability': 1.0,
+                'straight_speed_importance': 0.5,
+                'corner_speed_importance': 0.5,
+                'brake_wear': 1.0,
+                'engine_stress': 1.0
+            })
+            
+            # Enhanced track suitability calculation
+            track_factor = (
+                circuit_chars['straight_speed_importance'] * driver_chars['qualifying_pace'] +
+                circuit_chars['corner_speed_importance'] * driver_chars['race_craft'] +
+                (1 / circuit_chars['tire_deg_factor']) * driver_chars['tire_management'] +
+                (1 / circuit_chars['brake_wear']) * driver_chars['consistency']
+            ) / 4
+            
+            # Team-specific adjustments
+            team_factor = 1.0
+            if team == "Red Bull Racing":
+                team_factor = 1.15 if circuit_chars['straight_speed_importance'] > 0.6 else 1.12
+            elif team == "Ferrari":
+                team_factor = 1.12 if circuit_chars['corner_speed_importance'] > 0.6 else 1.10
+            elif team == "McLaren":
+                team_factor = 1.10 if circuit_chars['corner_speed_importance'] > 0.65 else 1.08
+            elif team == "Mercedes":
+                team_factor = 1.08
+            elif team == "Aston Martin":
+                team_factor = 1.05
+            
+            # Grid position advantage calculation
+            grid_advantage = 1.0
+            if qualifying_position <= 3:
+                grid_advantage = 1.15 if circuit_chars['overtaking_zones'] <= 2 else 1.10
+            elif qualifying_position <= 6:
+                grid_advantage = 1.10 if circuit_chars['overtaking_zones'] <= 2 else 1.05
+            
+            # Enhanced Red Bull specific adjustments
+            if team == "Red Bull Racing":
+                rb_chars = self.red_bull_characteristics
+                driver_name = driver_data.get('Abbreviation', '')
+                
+                # Apply Verstappen-specific boosts
+                if driver_name == "VER":
+                    driver_specific = rb_chars['verstappen_specific']
+                    race_pace *= driver_specific['race_craft_multiplier']
+                    
+                    # Enhanced qualifying recovery for Verstappen
+                    if qualifying_position > 3:
+                        recovery_boost = driver_specific['qualifying_recovery']
+                        race_pace *= (recovery_boost - (qualifying_position - 3) * 0.02)
+                    
+                    # Track evolution adaptation
+                    race_pace *= driver_specific['track_evolution_adaptation']
+                    
+                # Apply Perez-specific boosts
+                elif driver_name == "PER":
+                    driver_specific = rb_chars['perez_specific']
+                    race_pace *= driver_specific['race_craft_multiplier']
+                    
+                    # Qualifying recovery for Perez
+                    if qualifying_position > 3:
+                        recovery_boost = driver_specific['qualifying_recovery']
+                        race_pace *= (recovery_boost - (qualifying_position - 3) * 0.03)
+                    
+                    # Track evolution adaptation
+                    race_pace *= driver_specific['track_evolution_adaptation']
+                
+                # Apply general Red Bull race pace boost
+                race_pace *= rb_chars['race_pace_boost']['qualifying_to_race']
+                
+                # Enhanced tire management
+                if track_info.get('tire_deg_factor', 1.0) > 1.1:
+                    race_pace *= rb_chars['race_pace_boost']['tire_management']
+            
+            # Enhanced track evolution calculation
+            track_evolution = self.track_evolution_detailed
+            lap_progress = 0.5  # Assuming middle of the race
+            
+            # Determine race phase
+            if lap_progress <= track_evolution['grip_progression']['initial_phase']['duration']:
+                current_phase = track_evolution['grip_progression']['initial_phase']
+            elif lap_progress <= (track_evolution['grip_progression']['initial_phase']['duration'] + 
+                                track_evolution['grip_progression']['middle_phase']['duration']):
+                current_phase = track_evolution['grip_progression']['middle_phase']
+            else:
+                current_phase = track_evolution['grip_progression']['final_phase']
+            
+            # Calculate grip evolution
+            grip_level = (
+                1.0 +
+                current_phase['grip_increase'] * lap_progress * current_phase['line_sensitivity']
             )
+            
+            # Temperature impact on grip
+            track_temp = weather_conditions.get('track_temp', 30)
+            air_temp = weather_conditions.get('air_temp', 25)
+            
+            temp_delta_track = abs(track_temp - track_evolution['temperature_impact']['track_temp_optimal'])
+            temp_delta_air = abs(air_temp - track_evolution['temperature_impact']['air_temp_optimal'])
+            
+            temp_impact = (
+                1.0 -
+                (temp_delta_track + temp_delta_air) * track_evolution['temperature_impact']['temp_sensitivity']
+            )
+            
+            # Rubber evolution impact
+            rubber_level = min(
+                track_evolution['rubber_evolution']['optimal_level'],
+                lap_progress * track_evolution['rubber_evolution']['buildup_rate']
+            )
+            
+            if weather_conditions.get('rain', 0) > 0:
+                rubber_level += track_evolution['rubber_evolution']['cleaning_effect']
+            
+            # Enhanced tire performance calculation
+            tire_compound = 'medium'  # Default to medium
+            tire_chars = self.tire_performance_detailed['compound_characteristics'][tire_compound]
+            
+            # Determine tire degradation phase
+            if lap_progress <= tire_chars['deg_phases']['initial']['duration']:
+                current_deg_phase = tire_chars['deg_phases']['initial']
+            elif lap_progress <= (tire_chars['deg_phases']['initial']['duration'] + 
+                                tire_chars['deg_phases']['steady']['duration']):
+                current_deg_phase = tire_chars['deg_phases']['steady']
+            else:
+                current_deg_phase = tire_chars['deg_phases']['cliff']
+            
+            # Calculate tire performance
+            tire_performance = (
+                tire_chars['peak_grip'] *
+                (1.0 - current_deg_phase['rate'] * lap_progress)
+            )
+            
+            # Adjust for track conditions
+            track_condition = 'rubbered' if rubber_level > 0.7 else ('optimal' if rubber_level > 0.5 else 'green')
+            track_impact = self.tire_performance_detailed['track_condition_impact'][track_condition]
+            
+            tire_performance *= track_impact['grip_factor']
+            
+            # Final race pace calculation with all enhancements
+            race_pace = (
+                base_weights['qualifying_position'] * quali_factor * driver_chars['qualifying_pace'] * grid_advantage +
+                base_weights['recent_form'] * recent_form * driver_chars['consistency'] +
+                base_weights['track_specific'] * track_factor * driver_chars['adaptability'] +
+                base_weights['weather_impact'] * weather_factor * driver_chars['adaptability']
+            ) * team_factor * grip_level * temp_impact * tire_performance
+            
+            return race_pace
+            
+        except Exception as e:
+            logger.error(f"Error calculating race pace: {e}")
+            return 1.0
 
-        # Normalize race pace to ensure it stays within reasonable bounds
-        race_pace = max(0.1, min(2.0, race_pace))
-
-        return race_pace
+    def _calculate_recent_form(self, driver_data):
+        """Enhanced recent form calculation"""
+        try:
+            recent_races = driver_data.get('RecentRaces', [])
+            if not recent_races:
+                return 1.0
+            
+            # Enhanced weighting for recent results
+            weights = [0.5, 0.3, 0.2]  # Most recent to oldest
+            weighted_positions = 0
+            races_considered = 0
+            
+            for i, race in enumerate(recent_races[:3]):
+                if race.get('Position'):
+                    position = float(race['Position'])
+                    weighted_positions += position * weights[i]
+                    races_considered += weights[i]
+                
+                # Consider podiums and wins more strongly
+                if position == 1:
+                    weighted_positions -= 0.3 * weights[i]
+                elif position <= 3:
+                    weighted_positions -= 0.2 * weights[i]
+                
+                # Penalty for DNFs
+                if race.get('Status') != 'Finished':
+                    weighted_positions += 0.4 * weights[i]
+            
+            if races_considered > 0:
+                avg_position = weighted_positions / races_considered
+                form_score = 1 - (avg_position / 20)  # Normalize to 0-1 scale
+                return max(0.5, min(1.5, form_score))  # Limit the range
+            
+            return 1.0
+            
+        except Exception as e:
+            logger.error(f"Error calculating recent form: {e}")
+            return 1.0
