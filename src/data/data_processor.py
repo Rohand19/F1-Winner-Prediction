@@ -50,6 +50,76 @@ class F1DataProcessor:
             "Racing Bulls": "Visa Cash App Racing Bulls F1 Team",
             "Visa Cash App RB": "Visa Cash App Racing Bulls F1 Team",
             "RB": "Visa Cash App Racing Bulls F1 Team",
+            "AlphaTauri": "Visa Cash App Racing Bulls F1 Team",
+            "Toro Rosso": "Visa Cash App Racing Bulls F1 Team",
+            "Alfa Romeo": "Kick Sauber",
+            "Sauber": "Kick Sauber",
+            "Force India": "Aston Martin",
+            "Racing Point": "Aston Martin",
+            "Renault": "Alpine",
+        }
+
+        # Enhanced track similarity mapping to weight historical data
+        self.track_similarity = {
+            "Bahrain": ["Bahrain", "Saudi Arabia", "Abu Dhabi"],
+            "Saudi Arabia": ["Saudi Arabia", "Baku", "Jeddah", "Miami"],
+            "Australia": ["Australia", "Hungary", "Spain"],
+            "Japan": ["Japan", "UK", "Belgium", "Spain"],
+            "China": ["China", "Bahrain", "Zandvoort", "Brazil"],
+            "Miami": ["Miami", "Jeddah", "Monaco", "Singapore"],
+            "Emilia Romagna": ["Emilia Romagna", "Monaco", "Canada", "Austria"],
+            "Monaco": ["Monaco", "Singapore", "Hungary", "Canada"],
+            "Canada": ["Canada", "Monaco", "Australia", "France"],
+            "Spain": ["Spain", "France", "Hungary", "UK"],
+            "Austria": ["Austria", "Mexico", "Brazil", "Belgium"],
+            "UK": ["UK", "Belgium", "Japan", "Spain"],
+            "Hungary": ["Hungary", "Monaco", "Spain", "Australia"],
+            "Belgium": ["Belgium", "UK", "Italy", "France"],
+            "Netherlands": ["Netherlands", "Zandvoort", "Austria", "Belgium"],
+            "Italy": ["Italy", "Belgium", "France", "Spain"],
+            "Baku": ["Baku", "Saudi Arabia", "Russia", "Vietnam"],
+            "Singapore": ["Singapore", "Monaco", "Abu Dhabi", "Saudi Arabia"],
+            "USA": ["USA", "Mexico", "Brazil", "Qatar"],
+            "Mexico": ["Mexico", "Brazil", "Austria", "USA"],
+            "Brazil": ["Brazil", "Mexico", "USA", "Austria"],
+            "Las Vegas": ["Las Vegas", "Baku", "Saudi Arabia", "Italy"],
+            "Qatar": ["Qatar", "USA", "Abu Dhabi", "Bahrain"],
+            "Abu Dhabi": ["Abu Dhabi", "Bahrain", "Qatar", "Singapore"]
+        }
+
+        # Enhanced recency weighting for historical data
+        self.recency_weights = {
+            0: 1.0,  # Current year
+            1: 0.7,  # Previous year
+            2: 0.5,  # Two years ago
+            3: 0.3,  # Three years ago
+            4: 0.2,  # Four years ago
+            5: 0.1,  # Five years ago
+        }
+
+        # Track characteristic evolution factors (how much a track has changed)
+        self.track_evolution_factors = {
+            "Bahrain": 1.0,       # Consistent track
+            "Saudi Arabia": 0.9,  # Relatively new with changes
+            "Australia": 0.85,    # Recent layout changes
+            "Miami": 0.85,        # New track with changes
+            "China": 0.95,        # Resurfaced recently
+            "Monaco": 0.98,       # Very consistent
+            "Spain": 0.9,         # Layout changes
+            "Canada": 0.95,       # Relatively consistent
+            "UK": 0.95,           # Consistent
+            "Austria": 0.98,      # Consistent recently
+            "Hungary": 0.95,      # Consistent
+            "Belgium": 0.9,       # Recent changes
+            "Netherlands": 0.9,   # Recently rejoined calendar
+            "Singapore": 0.9,     # Layout modifications
+            "Japan": 0.98,        # Very consistent
+            "Qatar": 0.85,        # New to calendar
+            "USA": 0.95,          # Consistent recently
+            "Mexico": 0.98,       # Consistent
+            "Brazil": 0.95,       # Consistent layout
+            "Las Vegas": 0.8,     # New track
+            "Abu Dhabi": 0.9,     # Minor changes
         }
 
         # Store collected data
@@ -351,7 +421,7 @@ class F1DataProcessor:
         self, current_year=None, current_round=None, num_races=5, include_practice=False
     ):
         """
-        Collect historical race data for the specified circuit
+        Collect historical race data for the specified circuit with enhanced weighting
 
         Args:
             current_year: Current year (default: self.current_year)
@@ -397,19 +467,36 @@ class F1DataProcessor:
                 circuit_name = f"Round {current_round} Circuit"
                 logger.info(f"Using default circuit name: {circuit_name}")
 
+            # Get similar tracks for enhanced data collection
+            similar_tracks = self.track_similarity.get(circuit_name, [circuit_name])
+            
             # Collect historical race data
             historical_data = {"race": pd.DataFrame(), "qualifying": pd.DataFrame(), "practice": pd.DataFrame()}
+            
+            # Extend historical years search range to get more data for new tracks
+            search_years = sorted(self.historical_years + [current_year-4, current_year-5] 
+                                if circuit_name in ["Miami", "Las Vegas", "Qatar", "Saudi Arabia"] 
+                                else self.historical_years,
+                               reverse=True)
 
-            # Get races from previous years
-            for year in self.historical_years:
+            collected_races = 0
+            race_weights = []
+            
+            # Enhanced data collection strategy - prioritize exact track matches first
+            for year in search_years:
+                years_ago = current_year - year
+                
+                # Apply recency weighting
+                recency_weight = self.recency_weights.get(years_ago, 0.1)
+                
+                # First prioritize exact track matches
                 try:
-                    # Find the race at this circuit
                     year_schedule = self.get_season_schedule(year)
                     if year_schedule is None or year_schedule.empty:
                         logger.debug(f"No schedule found for year {year}")
                         continue
 
-                    # Try to match circuit name using different column names
+                    # Try to match exact circuit name
                     circuit_race = None
                     for col in column_priorities:
                         if col in year_schedule.columns:
@@ -417,96 +504,78 @@ class F1DataProcessor:
                                 year_schedule[col].str.contains(circuit_name, case=False, na=False)
                             ]
                             if not circuit_race.empty:
-                                logger.debug(f"Found matching race in {year} using column {col}")
+                                logger.debug(f"Found exact matching race in {year} using column {col}")
+                                
+                                # Apply track evolution factor (how much the track has changed over time)
+                                track_evolution = self.track_evolution_factors.get(circuit_name, 0.9)
+                                adjusted_weight = recency_weight * (track_evolution ** years_ago)
+                                
+                                # Process race data with weight
+                                race_round = circuit_race["RoundNumber"].iloc[0]
+                                self._process_historical_race(historical_data, year, race_round, 
+                                                             include_practice, adjusted_weight, 1.0)
+                                
+                                collected_races += 1
+                                race_weights.append(adjusted_weight)
                                 break
-
-                    if circuit_race is None or circuit_race.empty:
-                        logger.debug(f"No matching race found for {circuit_name} in {year}")
-                        continue
-
-                    race_round = circuit_race["RoundNumber"].iloc[0]
-                    logger.info(f"Processing historical data for {year} Round {race_round}")
-
-                    # Load race data
-                    race_data = self.load_session_data(year, race_round, "Race")
-                    if race_data is not None:
-                        race_results = self.process_race_data(race_data)
-                        if not race_results.empty:
-                            race_results["Year"] = year
-                            race_results["Round"] = race_round
-                            historical_data["race"] = pd.concat(
-                                [historical_data["race"], race_results]
-                            )
-                            logger.debug(f"Added race data from {year}")
-                            
-                    # Load qualifying data
-                    qualifying_data = self.load_session_data(year, race_round, "Qualifying")
-                    if qualifying_data is not None:
-                        try:
-                            qualifying_results = self.process_qualifying_data(qualifying_data)
-                            if qualifying_results is not None and not qualifying_results.empty:
-                                qualifying_results["Year"] = year
-                                qualifying_results["Round"] = race_round
-                                historical_data["qualifying"] = pd.concat(
-                                    [historical_data["qualifying"], qualifying_results]
-                                )
-                                logger.debug(f"Added qualifying data from {year}")
-                        except Exception as e:
-                            logger.warning(f"Error processing qualifying data from {year}: {e}")
-                            # Create a minimal qualifying DataFrame if processing fails
-                            if race_results is not None and not race_results.empty:
-                                min_qual = race_results[["DriverId", "FullName", "TeamName"]].copy()
-                                min_qual["Position"] = range(1, len(min_qual) + 1)
-                                min_qual["Year"] = year
-                                min_qual["Round"] = race_round
-                                historical_data["qualifying"] = pd.concat(
-                                    [historical_data["qualifying"], min_qual]
-                                )
-                                logger.debug(f"Added minimal qualifying data from {year}")
-
-                    # Load practice data if requested
-                    if include_practice:
-                        for session in ["Practice 1", "Practice 2", "Practice 3"]:
-                            practice_data = self.load_session_data(year, race_round, session)
-                            if practice_data is not None:
-                                practice_results = self.process_lap_data(practice_data)
-                                if (
-                                    practice_results is not None
-                                    and "laps" in practice_results
-                                    and not practice_results["laps"].empty
-                                ):
-                                    practice_results["laps"]["Year"] = year
-                                    practice_results["laps"]["Round"] = race_round
-                                    practice_results["laps"]["Session"] = session
-                                    historical_data["practice"] = pd.concat(
-                                        [historical_data["practice"], practice_results["laps"]]
-                                    )
-                                    logger.debug(f"Added {session} data from {year}")
-
                 except Exception as e:
-                    logger.warning(f"Error loading data for {year} {circuit_name}: {e}")
+                    logger.warning(f"Error loading exact track data for {year} {circuit_name}: {e}")
                     continue
+            
+            # If we didn't get enough data, look for similar tracks
+            if collected_races < num_races:
+                for similar_track in similar_tracks[1:]:  # Skip the first one (same as circuit_name)
+                    for year in search_years:
+                        # Skip if we have enough data
+                        if collected_races >= num_races:
+                            break
+                            
+                        years_ago = current_year - year
+                        recency_weight = self.recency_weights.get(years_ago, 0.1)
+                        
+                        try:
+                            year_schedule = self.get_season_schedule(year)
+                            if year_schedule is None or year_schedule.empty:
+                                continue
 
-            # Sort by date if available
-            if not historical_data["race"].empty:
-                if "Date" in historical_data["race"].columns:
-                    historical_data["race"] = historical_data["race"].sort_values(
-                        "Date", ascending=False
-                    )
-                else:
-                    historical_data["race"] = historical_data["race"].sort_values(
-                        "Year", ascending=False
-                    )
-
-            if not historical_data["practice"].empty:
-                if "Date" in historical_data["practice"].columns:
-                    historical_data["practice"] = historical_data["practice"].sort_values(
-                        "Date", ascending=False
-                    )
-                else:
-                    historical_data["practice"] = historical_data["practice"].sort_values(
-                        "Year", ascending=False
-                    )
+                            # Try to match similar circuit name
+                            circuit_race = None
+                            for col in column_priorities:
+                                if col in year_schedule.columns:
+                                    circuit_race = year_schedule[
+                                        year_schedule[col].str.contains(similar_track, case=False, na=False)
+                                    ]
+                                    if not circuit_race.empty:
+                                        # Apply track evolution and similarity factor (reduce weight for similar tracks)
+                                        similarity_index = similar_tracks.index(similar_track) if similar_track in similar_tracks else len(similar_tracks)
+                                        similarity_factor = max(0.4, 1.0 - (similarity_index * 0.2))  # 0.8, 0.6, 0.4 for similar tracks
+                                        
+                                        track_evolution = self.track_evolution_factors.get(similar_track, 0.9)
+                                        adjusted_weight = recency_weight * similarity_factor * (track_evolution ** years_ago)
+                                        
+                                        # Process race data with weight
+                                        race_round = circuit_race["RoundNumber"].iloc[0]
+                                        self._process_historical_race(historical_data, year, race_round, 
+                                                                     include_practice, adjusted_weight, similarity_factor)
+                                        
+                                        collected_races += 1
+                                        race_weights.append(adjusted_weight)
+                                        break
+                        except Exception as e:
+                            logger.warning(f"Error loading similar track data for {year} {similar_track}: {e}")
+                            continue
+            
+            # Normalize weights for final DataFrame
+            if race_weights and len(race_weights) > 0:
+                weight_sum = sum(race_weights)
+                normalized_weights = [w/weight_sum for w in race_weights]
+                
+                # Store the weights in the DataFrames for later use
+                if not historical_data["race"].empty:
+                    historical_data["race"]["DataWeight"] = normalized_weights[:len(historical_data["race"])]
+                
+                if not historical_data["qualifying"].empty:
+                    historical_data["qualifying"]["DataWeight"] = normalized_weights[:len(historical_data["qualifying"])]
 
             logger.info(
                 f"Collected historical data: {len(historical_data['race'])} races, {len(historical_data['practice'])} practice sessions"
@@ -516,6 +585,76 @@ class F1DataProcessor:
         except Exception as e:
             logger.error(f"Error collecting historical race data: {e}")
             return {"race": pd.DataFrame(), "qualifying": pd.DataFrame(), "practice": pd.DataFrame()}
+            
+    def _process_historical_race(self, historical_data, year, race_round, include_practice, weight_factor, similarity_factor):
+        """Helper method to process historical race data with weights"""
+        try:
+            # Load race data
+            race_data = self.load_session_data(year, race_round, "Race")
+            if race_data is not None:
+                race_results = self.process_race_data(race_data)
+                if not race_results.empty:
+                    race_results["Year"] = year
+                    race_results["Round"] = race_round
+                    race_results["WeightFactor"] = weight_factor
+                    race_results["SimilarityFactor"] = similarity_factor
+                    historical_data["race"] = pd.concat([historical_data["race"], race_results])
+                    logger.debug(f"Added race data from {year} with weight {weight_factor:.2f}")
+                    
+            # Load qualifying data
+            qualifying_data = self.load_session_data(year, race_round, "Qualifying")
+            if qualifying_data is not None:
+                try:
+                    qualifying_results = self.process_qualifying_data(qualifying_data)
+                    if qualifying_results is not None and not qualifying_results.empty:
+                        qualifying_results["Year"] = year
+                        qualifying_results["Round"] = race_round
+                        qualifying_results["WeightFactor"] = weight_factor
+                        qualifying_results["SimilarityFactor"] = similarity_factor
+                        historical_data["qualifying"] = pd.concat(
+                            [historical_data["qualifying"], qualifying_results]
+                        )
+                        logger.debug(f"Added qualifying data from {year} with weight {weight_factor:.2f}")
+                except Exception as e:
+                    logger.warning(f"Error processing qualifying data from {year}: {e}")
+                    # Create a minimal qualifying DataFrame if processing fails
+                    if race_results is not None and not race_results.empty:
+                        min_qual = race_results[["DriverId", "FullName", "TeamName"]].copy()
+                        min_qual["Position"] = range(1, len(min_qual) + 1)
+                        min_qual["Year"] = year
+                        min_qual["Round"] = race_round
+                        min_qual["WeightFactor"] = weight_factor
+                        min_qual["SimilarityFactor"] = similarity_factor
+                        historical_data["qualifying"] = pd.concat(
+                            [historical_data["qualifying"], min_qual]
+                        )
+                        logger.debug(f"Added minimal qualifying data from {year}")
+
+            # Load practice data if requested
+            if include_practice:
+                for session in ["Practice 1", "Practice 2", "Practice 3"]:
+                    practice_data = self.load_session_data(year, race_round, session)
+                    if practice_data is not None:
+                        practice_results = self.process_lap_data(practice_data)
+                        if (
+                            practice_results is not None
+                            and "laps" in practice_results
+                            and not practice_results["laps"].empty
+                        ):
+                            practice_results["laps"]["Year"] = year
+                            practice_results["laps"]["Round"] = race_round
+                            practice_results["laps"]["Session"] = session
+                            practice_results["laps"]["WeightFactor"] = weight_factor
+                            practice_results["laps"]["SimilarityFactor"] = similarity_factor
+                            historical_data["practice"] = pd.concat(
+                                [historical_data["practice"], practice_results["laps"]]
+                            )
+                            logger.debug(f"Added {session} data from {year}")
+                            
+            return True
+        except Exception as e:
+            logger.warning(f"Error in _process_historical_race for {year} round {race_round}: {e}")
+            return False
 
     def collect_current_event_data(self, gp_name=None, gp_round=None):
         """
