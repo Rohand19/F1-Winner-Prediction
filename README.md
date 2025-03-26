@@ -310,7 +310,7 @@ The model has been extensively tested on 2024 and 2025 race data, achieving:
 - **Exact Position Accuracy**: 5.0-5.3%
 - **Top 3 Accuracy**: 20.0-52.6%
 - **Top 5 Accuracy**: 50.0-63.2%
-- **Top 10 Accuracy**: 84.2-90.0%
+- **Top 10 Accuracy**: 89.5-95.0%
 
 ### Performance Improvements (2025)
 | Metric | Previous Model (Race 1) | Enhanced Model (Race 1) | Previous Model (Race 2) | Enhanced Model (Race 2) |
