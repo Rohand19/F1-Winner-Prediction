@@ -1514,7 +1514,7 @@ class F1FeatureEngineer:
         }
 
         # Get team-specific factors with balanced defaults
-        team = driver_data['Team']
+        team = driver_data['TeamName']
         team_factors = team_race_pace_factors.get(team, {
             'qualifying_weight': base_weights['qualifying'],
             'race_pace_boost': 1.0,
