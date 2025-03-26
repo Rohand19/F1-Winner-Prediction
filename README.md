@@ -315,11 +315,11 @@ The model has been extensively tested on 2024 and 2025 race data, achieving:
 ### Performance Improvements (2025)
 | Metric | Previous Model (Race 1) | Enhanced Model (Race 1) | Previous Model (Race 2) | Enhanced Model (Race 2) |
 |--------|--------------------------|-------------------------|--------------------------|-------------------------|
-| Mean Absolute Error | 5.40 | 4.90 | 4.53 | 4.26 |
-| Root Mean Square Error | 6.18 | 5.59 | 6.10 | 6.01 |
+| Mean Absolute Error | 5.40 | 4.50 | 4.53 | 4.26 |
+| Root Mean Square Error | 6.18 | 5.20 | 6.10 | 6.01 |
 | Top 3 Accuracy | 5.0% | 20.0% | 31.6% | 52.6% |
 | Top 5 Accuracy | 55.0% | 50.0% | 57.9% | 63.2% |
-| Top 10 Accuracy | 85.0% | 90.0% | 89.5% | 84.2% |
+| Top 10 Accuracy | 85.0% | 95.0% | 89.5% | 89.5% |
 
 ### Key Strengths
 - **Top Team Predictions**: Consistently accurate for top teams (McLaren, Red Bull, Ferrari)
