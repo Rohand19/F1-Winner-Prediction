@@ -69,7 +69,7 @@ def parse_arguments():
         "--model-type",
         type=str,
         default="gradient_boosting",
-        choices=["gradient_boosting", "random_forest", "neural_network"],
+        choices=["gradient_boosting", "random_forest", "xgboost"],
         help="Model type to use for predictions",
     )
     parser.add_argument(
@@ -222,6 +222,82 @@ def train_model(X_train, y_train, model_type="gradient_boosting", tune_hyperpara
             # Use default parameters
             model = GradientBoostingRegressor(random_state=42)
             model.fit(X_train, y_train)
+    elif model_type == "random_forest":
+        if tune_hyperparams:
+            # Define parameter grid for Random Forest
+            param_grid = {
+                "n_estimators": [100, 200, 300],
+                "max_depth": [None, 10, 20, 30],
+                "min_samples_split": [2, 5, 10],
+                "min_samples_leaf": [1, 2, 4]
+            }
+
+            # Create base model
+            base_model = RandomForestRegressor(random_state=42)
+
+            # Perform grid search
+            grid_search = GridSearchCV(
+                estimator=base_model,
+                param_grid=param_grid,
+                cv=5,
+                scoring="neg_mean_squared_error",
+                n_jobs=-1,
+            )
+
+            # Fit grid search
+            grid_search.fit(X_train, y_train)
+
+            # Get best model
+            best_params = grid_search.best_params_
+            model = RandomForestRegressor(**best_params, random_state=42)
+            model.fit(X_train, y_train)
+
+            logger.info(f"Best parameters: {best_params}")
+        else:
+            # Use default parameters
+            model = RandomForestRegressor(random_state=42)
+            model.fit(X_train, y_train)
+    elif model_type == "xgboost":
+        try:
+            import xgboost as xgb
+            if tune_hyperparams:
+                # Define parameter grid for XGBoost
+                param_grid = {
+                    "n_estimators": [100, 200, 300],
+                    "learning_rate": [0.01, 0.1, 0.2],
+                    "max_depth": [3, 5, 7],
+                    "subsample": [0.8, 0.9, 1.0],
+                    "colsample_bytree": [0.8, 0.9, 1.0]
+                }
+
+                # Create base model
+                base_model = xgb.XGBRegressor(objective="reg:squarederror", random_state=42)
+
+                # Perform grid search
+                grid_search = GridSearchCV(
+                    estimator=base_model,
+                    param_grid=param_grid,
+                    cv=5,
+                    scoring="neg_mean_squared_error",
+                    n_jobs=-1,
+                )
+
+                # Fit grid search
+                grid_search.fit(X_train, y_train)
+
+                # Get best model
+                best_params = grid_search.best_params_
+                model = xgb.XGBRegressor(objective="reg:squarederror", **best_params, random_state=42)
+                model.fit(X_train, y_train)
+
+                logger.info(f"Best parameters: {best_params}")
+            else:
+                # Use default parameters
+                model = xgb.XGBRegressor(objective="reg:squarederror", random_state=42)
+                model.fit(X_train, y_train)
+        except ImportError:
+            logger.error("XGBoost is not installed. Please install it with 'pip install xgboost'")
+            raise ImportError("XGBoost is not installed. Please install it with 'pip install xgboost'")
     else:
         raise ValueError(f"Unsupported model type: {model_type}")
 
@@ -237,6 +313,38 @@ def evaluate_model(model, X_test, y_test):
     logger.info(f"Model performance - MSE: {mse:.4f}, R2: {r2:.4f}")
 
     return mse, r2
+
+
+def compare_models(X, y, tune_hyperparams=False):
+    """Compare multiple model types and return the best one."""
+    logger.info("Comparing multiple model types...")
+    
+    model_types = ["gradient_boosting", "random_forest", "xgboost"]
+    model_results = {}
+    
+    for model_type in model_types:
+        try:
+            logger.info(f"Training {model_type} model...")
+            model = train_model(X, y, model_type=model_type, tune_hyperparams=tune_hyperparams)
+            mse, r2 = evaluate_model(model, X, y)
+            model_results[model_type] = {
+                "model": model,
+                "mse": mse,
+                "r2": r2
+            }
+        except Exception as e:
+            logger.error(f"Error training {model_type} model: {e}")
+    
+    # Find the best model based on MSE
+    if model_results:
+        best_model_type = min(model_results.items(), key=lambda x: x[1]["mse"])[0]
+        logger.info(f"Best model type: {best_model_type} with MSE: {model_results[best_model_type]['mse']:.4f}")
+        
+        # Return the best model
+        return model_results[best_model_type]["model"], best_model_type
+    else:
+        logger.error("No models were successfully trained")
+        return None, None
 
 
 def prepare_data_for_prediction(qualifying_data, historical_data=None):
@@ -990,11 +1098,17 @@ def main():
         logger.info(f"Feature matrix shape: {X.shape}")
         logger.info(f"Target variable length: {len(y)}")
 
-        # Train model
-        logger.info(f"Training {args.model_type} model...")
-        model = train_model(
-            X, y, model_type=args.model_type, tune_hyperparams=args.tune_hyperparams
-        )
+        # Train model or compare models
+        if args.compare_models:
+            model, best_model_type = compare_models(X, y, tune_hyperparams=args.tune_hyperparams)
+            if model is None:
+                logger.error("Model comparison failed. Falling back to default model.")
+                model = train_model(X, y, model_type=args.model_type, tune_hyperparams=args.tune_hyperparams)
+            else:
+                logger.info(f"Using best model from comparison: {best_model_type}")
+        else:
+            logger.info(f"Training {args.model_type} model...")
+            model = train_model(X, y, model_type=args.model_type, tune_hyperparams=args.tune_hyperparams)
 
         # Evaluate model
         evaluate_model(model, X, y)

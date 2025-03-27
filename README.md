@@ -6,6 +6,7 @@
   <img src="https://img.shields.io/badge/Machine%20Learning-AI-brightgreen?style=for-the-badge&logo=tensorflow" alt="Machine Learning"/>
   <img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" alt="License: MIT"/>
   <img src="https://img.shields.io/badge/2025-Ready-orange?style=for-the-badge" alt="2025 Ready"/>
+  <img src="https://img.shields.io/badge/Streamlit-UI-ff4b4b?style=for-the-badge&logo=streamlit" alt="Streamlit UI"/>
 </div>
 
 <br>
@@ -19,6 +20,7 @@ A sophisticated Formula 1 race prediction system that uses real-time qualifying 
 - [Project Structure](#-project-structure)
 - [Installation](#-installation)
 - [Usage](#-usage)
+- [Web Interface](#-web-interface)
 - [Advanced Features](#-advanced-features)
 - [How It Works](#-how-it-works)
 - [Results and Visualization](#-results-and-visualization)
@@ -178,6 +180,52 @@ usage: main_predictor.py [-h] --year YEAR --race RACE [--event EVENT]
                         [--total-laps TOTAL_LAPS]
 ```
 
+## 🖥️ Web Interface
+
+The project includes a user-friendly web interface built with Streamlit, providing an interactive way to run predictions, visualize results, and analyze historical data.
+
+### Running the Web Interface
+
+To launch the web interface:
+
+```bash
+streamlit run app.py
+```
+
+This will start a local web server and automatically open the application in your default web browser.
+
+### Web Interface Features
+
+The Streamlit interface provides the following features:
+
+- **Interactive Prediction Settings**: 
+  - Select race year and round
+  - Choose machine learning model type
+  - Configure weather conditions
+  - Toggle hyperparameter tuning
+
+- **Real-time Visualization**:
+  - Final race positions and points
+  - Team performance comparisons
+  - Grid position vs finishing position analysis
+  - Gap to winner visualization
+  - Predicted vs actual position comparison
+
+- **Performance Metrics**:
+  - Mean Absolute Error display
+  - Top 3/5/10 accuracy percentages 
+  - Detailed metrics breakdown
+
+- **Historical Analysis**:
+  - Browse previous prediction results
+  - Compare multiple race predictions
+  - Analyze model performance over time
+
+- **Detailed Logs**:
+  - View detailed output from prediction runs
+  - Debug information for model tuning
+
+
 ## 🔥 Advanced Features
 
 ### 🌧️ Weather Simulation
@@ -211,6 +259,15 @@ Analyze an entire season:
 ```bash
 # Run a season simulation script (requires custom script)
 python scripts/season_simulator.py --year 2025 --races all
+```
+
+### 🌐 Web Interface Mode
+
+Use the interactive web interface for easier prediction and visualization:
+
+```bash
+# Launch the Streamlit web interface
+streamlit run app.py
 ```
 
 ## ⚙️ How It Works
