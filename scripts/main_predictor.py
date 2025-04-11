@@ -96,10 +96,17 @@ def parse_arguments():
         help="Enable changing weather conditions during race",
     )
     parser.add_argument(
-        "--total-laps",
-        type=int,
-        default=None,
-        help="Set custom number of race laps (overrides default for track)",
+        "--live-weather",
+        action="store_true",
+        help="Use live weather data from API for the race location",
+    )
+    parser.add_argument(
+        "--weather-api-key",
+        type=str,
+        help="API key for weather service (if not set in environment)",
+    )
+    parser.add_argument(
+        "--total-laps", type=int, help="Set custom number of race laps (overrides default for track)"
     )
 
     return parser.parse_args()
@@ -897,7 +904,7 @@ def calculate_prediction_metrics(predicted_results, actual_results):
 
 def main():
     """
-    Main prediction pipeline
+    Main function for F1 race prediction
     """
     # Parse command line arguments
     args = parse_arguments()
@@ -1122,6 +1129,37 @@ def main():
             "wind_speed": 5.0,  # Default
             "changing_conditions": args.changing_conditions,
         }
+
+        # If using live weather, fetch it from the weather service
+        if args.live_weather:
+            from src.f1predictor.utils import WeatherService
+            
+            logger.info("Fetching live weather data for race location...")
+            weather_service = WeatherService(api_key=args.weather_api_key)
+            live_weather = weather_service.get_current_weather(track_name)
+            
+            if live_weather:
+                logger.info(f"Using live weather data: {live_weather['weather_description']}")
+                weather_conditions.update({
+                    "track_temp": live_weather["track_temp"],
+                    "air_temp": live_weather["air_temp"],
+                    "humidity": live_weather["humidity"],
+                    "rain_chance": live_weather["rain_chance"],
+                    "wind_speed": live_weather["wind_speed"],
+                    "changing_conditions": live_weather["changing_conditions"],
+                })
+                
+                # Add weather info to results directory
+                with open(os.path.join(run_output_dir, f"weather_info_{timestamp}.json"), 'w') as f:
+                    json.dump(live_weather, f, indent=2)
+                logger.info(f"Saved weather info to {os.path.join(run_output_dir, f'weather_info_{timestamp}.json')}")
+            
+        logger.info(f"Weather conditions for simulation: Track: {weather_conditions['track_temp']}°C, " +
+                    f"Air: {weather_conditions['air_temp']}°C, " +
+                    f"Humidity: {weather_conditions['humidity']}%, " +
+                    f"Rain chance: {weather_conditions['rain_chance'] * 100:.1f}%, " +
+                    f"Wind: {weather_conditions['wind_speed']} km/h, " +
+                    f"Changing: {weather_conditions['changing_conditions']}")
 
         # Create race predictor with track-specific parameters
         race_predictor = RacePredictor(
